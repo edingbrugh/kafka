@@ -66,8 +66,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * The background thread that handles the sending of produce requests to the Kafka cluster. This thread makes metadata
- * requests to renew its view of the cluster and then sends produce requests to the appropriate nodes.
+ * 后台线程负责向Kafka集群发送农产品请求。该线程发出元数据请求以更新其集群视图，然后将产品请求发送到适当的节点。
  */
 public class Sender implements Runnable {
 
@@ -173,7 +172,7 @@ public class Sender implements Runnable {
     }
 
     /**
-     *  Get the in-flight batches that has reached delivery timeout.
+     *  获取已达到交付超时的飞行中批次。
      */
     private List<ProducerBatch> getExpiredInflightBatches(long now) {
         List<ProducerBatch> expiredBatches = new ArrayList<>();
@@ -187,9 +186,8 @@ public class Sender implements Runnable {
                     ProducerBatch batch = iter.next();
                     if (batch.hasReachedDeliveryTimeout(accumulator.getDeliveryTimeoutMs(), now)) {
                         iter.remove();
-                        // expireBatches is called in Sender.sendProducerData, before client.poll.
-                        // The !batch.isDone() invariant should always hold. An IllegalStateException
-                        // exception will be thrown if the invariant is violated.
+                        // 在Sender中调用expireBatches。sendProducerData，在client.poll之前。
+                        // batch.isDone()不变量应该始终有效。如果违反了不变量，将抛出一个IllegalStateException异常。
                         if (!batch.isDone()) {
                             expiredBatches.add(batch);
                         } else {
@@ -231,13 +229,13 @@ public class Sender implements Runnable {
     }
 
     /**
-     * The main run loop for the sender thread
+     * 发送方线程的主运行循环
      */
     @Override
     public void run() {
         log.debug("Starting Kafka producer I/O thread.");
 
-        // main loop, runs until close is called
+        // 主循环，运行直到close被调用
         while (running) {
             try {
                 runOnce();
@@ -248,9 +246,7 @@ public class Sender implements Runnable {
 
         log.debug("Beginning shutdown of Kafka producer I/O thread, sending remaining records.");
 
-        // okay we stopped accepting requests but there may still be
-        // requests in the transaction manager, accumulator or waiting for acknowledgment,
-        // wait until these are completed.
+        // 好的，我们停止接受请求，但在事务管理器，累加器或等待确认中可能还有请求，等待这些完成。
         while (!forceClose && ((this.accumulator.hasUndrained() || this.client.inFlightRequestCount() > 0) || hasPendingTransactionalRequests())) {
             try {
                 runOnce();
@@ -259,7 +255,7 @@ public class Sender implements Runnable {
             }
         }
 
-        // Abort the transaction if any commit or abort didn't go through the transaction manager's queue
+        // 如果任何提交或中止没有通过事务管理器的队列，则中止事务
         while (!forceClose && transactionManager != null && transactionManager.hasOngoingTransaction()) {
             if (!transactionManager.isCompleting()) {
                 log.info("Aborting incomplete transaction due to shutdown");
@@ -273,8 +269,7 @@ public class Sender implements Runnable {
         }
 
         if (forceClose) {
-            // We need to fail all the incomplete transactional requests and batches and wake up the threads waiting on
-            // the futures.
+            // 我们需要失败所有未完成的事务请求和批处理，并唤醒等待期货的线程。
             if (transactionManager != null) {
                 log.debug("Aborting incomplete transactional requests due to forced shutdown");
                 transactionManager.close();
@@ -292,7 +287,7 @@ public class Sender implements Runnable {
     }
 
     /**
-     * Run a single iteration of sending
+     * 运行发送的单个迭代
      *
      */
     void runOnce() {
@@ -316,7 +311,7 @@ public class Sender implements Runnable {
                     return;
                 }
             } catch (AuthenticationException e) {
-                // This is already logged as error, but propagated here to perform any clean ups.
+                // 这已经被记录为错误，但在这里传播以执行任何清理。
                 log.trace("Authentication exception while processing transactional request", e);
                 transactionManager.authenticationFailed(e);
             }
@@ -329,14 +324,13 @@ public class Sender implements Runnable {
 
     private long sendProducerData(long now) {
         Cluster cluster = metadata.fetch();
-        // get the list of partitions with data ready to send
+        // 获取准备发送数据的分区列表
         RecordAccumulator.ReadyCheckResult result = this.accumulator.ready(cluster, now);
 
-        // if there are any partitions whose leaders are not known yet, force metadata update
+        // 如果有任何分区的leader是未知的，那么强制更新元数据
         if (!result.unknownLeaderTopics.isEmpty()) {
-            // The set of topics with unknown leader contains topics with leader election pending as well as
-            // topics which may have expired. Add the topic again to metadata to ensure it is included
-            // and request metadata update, since there are messages to send to the topic.
+            // 具有未知领导者的主题集包含尚未进行领导者选举的主题以及可能已过期的主题。再次将主题添加到元数据中，以确保包含主题并请求元数据更新，
+            // 因为有消息要发送到主题。
             for (String topic : result.unknownLeaderTopics)
                 this.metadata.add(topic, now);
 
@@ -345,7 +339,7 @@ public class Sender implements Runnable {
             this.metadata.requestUpdate();
         }
 
-        // remove any nodes we aren't ready to send to
+        // 删除任何我们没有准备好发送的节点
         Iterator<Node> iter = result.readyNodes.iterator();
         long notReadyTimeout = Long.MAX_VALUE;
         while (iter.hasNext()) {
