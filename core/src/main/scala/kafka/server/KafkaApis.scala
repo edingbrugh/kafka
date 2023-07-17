@@ -659,7 +659,7 @@ class KafkaApis(val requestChannel: RequestChannel,
   }
 
   /**
-   * Handle a fetch request
+   * 处理取回请求
    */
   def handleFetchRequest(request: RequestChannel.Request): Unit = {
     val versionId = request.header.apiVersion
@@ -672,7 +672,7 @@ class KafkaApis(val requestChannel: RequestChannel,
       fetchRequest.isFromFollower)
 
     val clientMetadata: Option[ClientMetadata] = if (versionId >= 11) {
-      // Fetch API version 11 added preferred replica logic
+      // Fetch API版本11添加了首选副本逻辑
       Some(new DefaultClientMetadata(
         fetchRequest.rackId,
         clientId,
@@ -686,7 +686,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     val erroneous = mutable.ArrayBuffer[(TopicPartition, FetchResponseData.PartitionData)]()
     val interesting = mutable.ArrayBuffer[(TopicPartition, FetchRequest.PartitionData)]()
     if (fetchRequest.isFromFollower) {
-      // The follower must have ClusterAction on ClusterResource in order to fetch partition data.
+      // follower必须在ClusterResource上有ClusterAction才能获取分区数据。
       if (authHelper.authorize(request.context, CLUSTER_ACTION, CLUSTER, CLUSTER_NAME)) {
         fetchContext.foreachPartition { (topicPartition, data) =>
           if (!metadataCache.contains(topicPartition))
@@ -700,7 +700,7 @@ class KafkaApis(val requestChannel: RequestChannel,
         }
       }
     } else {
-      // Regular Kafka consumers need READ permission on each partition they are fetching.
+      // 普通的Kafka消费者需要读取每个分区的READ权限。
       val partitionDatas = new mutable.ArrayBuffer[(TopicPartition, FetchRequest.PartitionData)]
       fetchContext.foreachPartition { (topicPartition, partitionData) =>
         partitionDatas += topicPartition -> partitionData
@@ -717,10 +717,9 @@ class KafkaApis(val requestChannel: RequestChannel,
     }
 
     def maybeDownConvertStorageError(error: Errors): Errors = {
-      // If consumer sends FetchRequest V5 or earlier, the client library is not guaranteed to recognize the error code
-      // for KafkaStorageException. In this case the client library will translate KafkaStorageException to
-      // UnknownServerException which is not retriable. We can ensure that consumer will update metadata and retry
-      // by converting the KafkaStorageException to NotLeaderOrFollowerException in the response if FetchRequest version <= 5
+      // 如果消费者发送FetchRequest V5或更早的版本，客户端库不能保证识别KafkaStorageException的错误代码。在这种情况下，
+      // 客户端库会将KafkaStorageException转换为不可检索的UnknownServerException。如果FetchRequest版本<= 5，
+      // 我们可以通过在响应中将KafkaStorageException转换为NotLeaderOrFollowerException来确保消费者将更新元数据并重试
       if (error == Errors.KAFKA_STORAGE_ERROR && versionId <= 5) {
         Errors.NOT_LEADER_OR_FOLLOWER
       } else {
@@ -736,17 +735,11 @@ class KafkaApis(val requestChannel: RequestChannel,
         trace(s"Fetching messages is disabled for ZStandard compressed partition $tp. Sending unsupported version response to $clientId.")
         FetchResponse.partitionResponse(tp.partition, Errors.UNSUPPORTED_COMPRESSION_TYPE)
       } else {
-        // Down-conversion of fetched records is needed when the on-disk magic value is greater than what is
-        // supported by the fetch request version.
-        // If the inter-broker protocol version is `3.0` or higher, the log config message format version is
-        // always `3.0` (i.e. magic value is `v2`). As a result, we always go through the down-conversion
-        // path if the fetch version is 3 or lower (in rare cases the down-conversion may not be needed, but
-        // it's not worth optimizing for them).
-        // If the inter-broker protocol version is lower than `3.0`, we rely on the log config message format
-        // version as a proxy for the on-disk magic value to maintain the long-standing behavior originally
-        // introduced in Kafka 0.10.0. An important implication is that it's unsafe to downgrade the message
-        // format version after a single message has been produced (the broker would return the message(s)
-        // without down-conversion irrespective of the fetch version).
+        // 当磁盘上的magic值大于获取请求版本所支持的值时，需要对获取的记录进行向下转换。如果代理间协议版本为' 3.0 '或更高版本，
+        // 则日志配置消息格式版本始终为' 3.0 '(即魔术值为' v2 ')。因此，如果fetch版本为3或更低，我们总是通过下转换路径
+        // (在极少数情况下，下转换可能不需要，但不值得为它们优化)。如果代理间协议版本低于“3.0”，
+        // 我们将依赖日志配置消息格式版本作为磁盘魔法值的代理，以维持Kafka 0.10.0中最初引入的长期行为。一个重要的含义是，
+        // 在生成单个消息后降级消息格式版本是不安全的(无论获取版本如何，代理都将返回没有降级转换的消息)。
         val unconvertedRecords = FetchResponse.recordsOrFail(partitionData)
         val downConvertMagic =
           logConfig.map(_.recordVersion.value).flatMap { magic =>
@@ -760,17 +753,15 @@ class KafkaApis(val requestChannel: RequestChannel,
 
         downConvertMagic match {
           case Some(magic) =>
-            // For fetch requests from clients, check if down-conversion is disabled for the particular partition
+            // 对于来自客户端的获取请求，检查是否为特定分区禁用了向下转换
             if (!fetchRequest.isFromFollower && !logConfig.forall(_.messageDownConversionEnable)) {
               trace(s"Conversion to message format ${downConvertMagic.get} is disabled for partition $tp. Sending unsupported version response to $clientId.")
               FetchResponse.partitionResponse(tp.partition, Errors.UNSUPPORTED_VERSION)
             } else {
               try {
                 trace(s"Down converting records from partition $tp to message format version $magic for fetch request from $clientId")
-                // Because down-conversion is extremely memory intensive, we want to try and delay the down-conversion as much
-                // as possible. With KIP-283, we have the ability to lazily down-convert in a chunked manner. The lazy, chunked
-                // down-conversion always guarantees that at least one batch of messages is down-converted and sent out to the
-                // client.
+                // 由于下转换非常占用内存，我们希望尽可能地延迟下转换。使用KIP-283，我们能够以分块方式惰性向下转换。延迟的、
+                // 分块的向下转换总是保证至少有一批消息被向下转换并发送到客户端。
                 new FetchResponseData.PartitionData()
                   .setPartitionIndex(tp.partition)
                   .setErrorCode(maybeDownConvertStorageError(Errors.forCode(partitionData.errorCode)).code)
@@ -801,7 +792,7 @@ class KafkaApis(val requestChannel: RequestChannel,
       }
     }
 
-    // the callback for process a fetch response, invoked before throttling
+    // 处理获取响应的回调，在节流之前调用
     def processResponseCallback(responsePartitionData: Seq[(TopicPartition, FetchPartitionData)]): Unit = {
       val partitions = new util.LinkedHashMap[TopicPartition, FetchResponseData.PartitionData]
       val reassigningPartitions = mutable.Set[TopicPartition]()
@@ -826,7 +817,7 @@ class KafkaApis(val requestChannel: RequestChannel,
       var unconvertedFetchResponse: FetchResponse = null
 
       def createResponse(throttleTimeMs: Int): FetchResponse = {
-        // Down-convert messages for each partition if required
+        // 如果需要，向下转换每个分区的消息
         val convertedData = new util.LinkedHashMap[TopicPartition, FetchResponseData.PartitionData]
         unconvertedFetchResponse.responseData.forEach { (tp, unconvertedPartitionData) =>
           val error = Errors.forCode(unconvertedPartitionData.errorCode)
@@ -836,9 +827,9 @@ class KafkaApis(val requestChannel: RequestChannel,
           convertedData.put(tp, maybeConvertFetchedData(tp, unconvertedPartitionData))
         }
 
-        // Prepare fetch response from converted data
+        // 准备从转换后的数据获取响应
         val response = FetchResponse.of(unconvertedFetchResponse.error, throttleTimeMs, unconvertedFetchResponse.sessionId, convertedData)
-        // record the bytes out metrics only when the response is being sent
+        // 仅在发送响应时记录字节输出度量
         response.responseData.forEach { (tp, data) =>
           brokerTopicStats.updateBytesOut(tp.topic, fetchRequest.isFromFollower,
             reassigningPartitions.contains(tp), FetchResponse.recordsSize(data))
@@ -857,7 +848,7 @@ class KafkaApis(val requestChannel: RequestChannel,
       }
 
       if (fetchRequest.isFromFollower) {
-        // We've already evaluated against the quota and are good to go. Just need to record it now.
+        // 我们已经根据配额进行了评估，准备好了。现在就录下来。
         unconvertedFetchResponse = fetchContext.updateAndGenerateResponseData(partitions)
         val responseSize = KafkaApis.sizeOfThrottledPartitions(versionId, unconvertedFetchResponse, quotas.leader)
         quotas.leader.record(responseSize)
@@ -865,13 +856,9 @@ class KafkaApis(val requestChannel: RequestChannel,
           s"metadata=${unconvertedFetchResponse.sessionId}")
         requestHelper.sendResponseExemptThrottle(request, createResponse(0), Some(updateConversionStats))
       } else {
-        // Fetch size used to determine throttle time is calculated before any down conversions.
-        // This may be slightly different from the actual response size. But since down conversions
-        // result in data being loaded into memory, we should do this only when we are not going to throttle.
-        //
-        // Record both bandwidth and request quota-specific values and throttle by muting the channel if any of the
-        // quotas have been violated. If both quotas have been violated, use the max throttle time between the two
-        // quotas. When throttled, we unrecord the recorded bandwidth quota value
+        // 用于确定节流时间的取值大小在任何向下转换之前计算。这可能与实际响应大小略有不同。但是由于向下转换会导致数据被加载到内存中，
+        // 所以我们应该只在不打算节流时才这样做。记录带宽和特定于请求配额的值，并在违反任何配额时通过使通道静音来进行节流。
+        // 如果违反了两个配额，则使用两个配额之间的最大节流时间。当节流时，我们取消记录已记录的带宽配额值
         val responseSize = fetchContext.getResponseSize(partitions, versionId)
         val timeMs = time.milliseconds()
         val requestThrottleTimeMs = quotas.request.maybeRecordAndGetThrottleTimeMs(request, timeMs)
@@ -880,30 +867,28 @@ class KafkaApis(val requestChannel: RequestChannel,
         val maxThrottleTimeMs = math.max(bandwidthThrottleTimeMs, requestThrottleTimeMs)
         if (maxThrottleTimeMs > 0) {
           request.apiThrottleTimeMs = maxThrottleTimeMs
-          // Even if we need to throttle for request quota violation, we should "unrecord" the already recorded value
-          // from the fetch quota because we are going to return an empty response.
+          // 即使我们需要限制请求配额违反，我们也应该“取消记录”已经从获取配额中记录的值，因为我们将返回一个空响应。
           quotas.fetch.unrecordQuotaSensor(request, responseSize, timeMs)
           if (bandwidthThrottleTimeMs > requestThrottleTimeMs) {
             requestHelper.throttle(quotas.fetch, request, bandwidthThrottleTimeMs)
           } else {
             requestHelper.throttle(quotas.request, request, requestThrottleTimeMs)
           }
-          // If throttling is required, return an empty response.
+          // 如果需要节流，则返回空响应。
           unconvertedFetchResponse = fetchContext.getThrottledResponse(maxThrottleTimeMs)
         } else {
-          // Get the actual response. This will update the fetch context.
+          // 获取实际响应。这将更新获取上下文。
           unconvertedFetchResponse = fetchContext.updateAndGenerateResponseData(partitions)
           trace(s"Sending Fetch response with partitions.size=$responseSize, metadata=${unconvertedFetchResponse.sessionId}")
         }
 
-        // Send the response immediately.
+        // 立即发送响应。
         requestChannel.sendResponse(request, createResponse(maxThrottleTimeMs), Some(updateConversionStats))
       }
     }
 
-    // for fetch from consumer, cap fetchMaxBytes to the maximum bytes that could be fetched without being throttled given
-    // no bytes were recorded in the recent quota window
-    // trying to fetch more bytes would result in a guaranteed throttling potentially blocking consumer progress
+    // 如果在最近的配额窗口中没有记录字节，那么将fetchMaxBytes限制为可以在不进行节流的情况下提取的最大字节数。
+    // 尝试获取更多字节将导致保证的节流，可能会阻塞消费者的进度
     val maxQuotaWindowBytes = if (fetchRequest.isFromFollower)
       Int.MaxValue
     else
@@ -914,7 +899,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     if (interesting.isEmpty)
       processResponseCallback(Seq.empty)
     else {
-      // call the replica manager to fetch messages from the local replica
+      // 调用副本管理器从本地副本获取消息
       replicaManager.fetchMessages(
         fetchRequest.maxWait.toLong,
         fetchRequest.replicaId,
@@ -1061,8 +1046,7 @@ class KafkaApis(val requestChannel: RequestChannel,
             }
             response
           } catch {
-            // NOTE: These exceptions are special cases since these error messages are typically transient or the client
-            // would have received a clear exception and there is no value in logging the entire stack trace for the same
+            // 注意:这些异常是特殊情况，因为这些错误消息通常是暂时的，或者客户端会收到一个明确的异常，并且记录整个堆栈跟踪是没有价值的
             case e @ (_ : UnknownTopicOrPartitionException |
                       _ : NotLeaderOrFollowerException |
                       _ : UnknownLeaderEpochException |
@@ -1073,7 +1057,7 @@ class KafkaApis(val requestChannel: RequestChannel,
                   s"partition $topicPartition failed due to ${e.getMessage}")
               buildErrorResponse(Errors.forException(e), partition)
 
-            // Only V5 and newer ListOffset calls should get OFFSET_NOT_AVAILABLE
+            // 只有V5和更新的ListOffset调用应该得到OFFSET_NOT_AVAILABLE
             case e: OffsetNotAvailableException =>
               if (request.header.apiVersion >= 5) {
                 buildErrorResponse(Errors.forException(e), partition)
@@ -1149,7 +1133,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     val metadataRequest = request.body[MetadataRequest]
     val requestVersion = request.header.apiVersion
 
-    // Topic IDs are not supported for versions 10 and 11. Topic names can not be null in these versions.
+    // 版本10和11不支持主题id。在这些版本中，主题名不能为空。
     if (!metadataRequest.isAllTopics) {
       metadataRequest.data.topics.forEach{ topic =>
         if (topic.name == null) {
@@ -1185,20 +1169,19 @@ class KafkaApis(val requestChannel: RequestChannel,
     val unauthorizedForCreateTopicMetadata = unauthorizedForCreateTopics.map(topic =>
       metadataResponseTopic(Errors.TOPIC_AUTHORIZATION_FAILED, topic, isInternal(topic), util.Collections.emptyList()))
 
-    // do not disclose the existence of topics unauthorized for Describe, so we've not even checked if they exist or not
+    // 没有透露未经授权的主题的存在，所以我们甚至没有检查它们是否存在
     val unauthorizedForDescribeTopicMetadata =
-      // In case of all topics, don't include topics unauthorized for Describe
+      // 在所有主题的情况下，不要包括未经授权描述的主题
       if ((requestVersion == 0 && (metadataRequest.topics == null || metadataRequest.topics.isEmpty)) || metadataRequest.isAllTopics)
         Set.empty[MetadataResponseTopic]
       else
         unauthorizedForDescribeTopics.map(topic =>
           metadataResponseTopic(Errors.TOPIC_AUTHORIZATION_FAILED, topic, false, util.Collections.emptyList()))
 
-    // In version 0, we returned an error when brokers with replicas were unavailable,
-    // while in higher versions we simply don't include the broker in the returned broker list
+    // 在版本0中，当具有副本的代理不可用时，我们返回一个错误，而在更高版本中，我们只是不将代理包含在返回的代理列表中
     val errorUnavailableEndpoints = requestVersion == 0
-    // In versions 5 and below, we returned LEADER_NOT_AVAILABLE if a matching listener was not found on the leader.
-    // From version 6 onwards, we return LISTENER_NOT_FOUND to enable diagnosis of configuration errors.
+    // 在版本5及更低的版本中，如果在leader上没有找到匹配的监听器，我们将返回LEADER_NOT_AVAILABLE。从版本6开始，
+    // 我们返回LISTENER_NOT_FOUND以启用配置错误诊断。
     val errorUnavailableListeners = requestVersion >= 6
 
     val allowAutoCreation = config.autoCreateTopicsEnable && metadataRequest.allowAutoTopicCreation && !metadataRequest.isAllTopics
@@ -1207,7 +1190,7 @@ class KafkaApis(val requestChannel: RequestChannel,
 
     var clusterAuthorizedOperations = Int.MinValue // Default value in the schema
     if (requestVersion >= 8) {
-      // get cluster authorized operations
+      // 获取集群授权操作
       if (requestVersion <= 10) {
         if (metadataRequest.data.includeClusterAuthorizedOperations) {
           if (authHelper.authorize(request.context, DESCRIBE, CLUSTER, CLUSTER_NAME))
@@ -1217,7 +1200,7 @@ class KafkaApis(val requestChannel: RequestChannel,
         }
       }
 
-      // get topic authorized operations
+      // 获取主题授权操作
       if (metadataRequest.data.includeTopicAuthorizedOperations) {
         def setTopicAuthorizedOperations(topicMetadata: Seq[MetadataResponseTopic]): Unit = {
           topicMetadata.foreach { topicData =>
@@ -1248,18 +1231,18 @@ class KafkaApis(val requestChannel: RequestChannel,
   }
 
   /**
-   * Handle an offset fetch request
+   * 处理偏移量获取请求
    */
   def handleOffsetFetchRequest(request: RequestChannel.Request): Unit = {
     val version = request.header.apiVersion
     if (version == 0) {
-      // reading offsets from ZK
+      // 从ZK读取偏移量
       handleOffsetFetchRequestV0(request)
     } else if (version >= 1 && version <= 7) {
       // reading offsets from Kafka
       handleOffsetFetchRequestBetweenV1AndV7(request)
     } else {
-      // batching offset reads for multiple groups starts with version 8 and greater
+      // 多组的批处理偏移读取从版本8及更高版本开始
       handleOffsetFetchRequestV8AndAbove(request)
     }
   }
@@ -1270,7 +1253,7 @@ class KafkaApis(val requestChannel: RequestChannel,
 
     def createResponse(requestThrottleMs: Int): AbstractResponse = {
       val offsetFetchResponse =
-      // reject the request if not authorized to the group
+      // 如果未授权给组，则拒绝请求
         if (!authHelper.authorize(request.context, DESCRIBE, GROUP, offsetFetchRequest.groupId))
           offsetFetchRequest.getErrorResponse(requestThrottleMs, Errors.GROUP_AUTHORIZATION_FAILED)
         else {
@@ -1278,7 +1261,7 @@ class KafkaApis(val requestChannel: RequestChannel,
           val (authorizedPartitions, unauthorizedPartitions) = partitionByAuthorized(
             offsetFetchRequest.partitions.asScala, request.context)
 
-          // version 0 reads offsets from ZK
+          // 版本0从ZK读取偏移量
           val authorizedPartitionData = authorizedPartitions.map { topicPartition =>
             try {
               if (!metadataCache.contains(topicPartition))
@@ -1560,7 +1543,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     }
     val (error, groups) = groupCoordinator.handleListGroups(states)
     if (authHelper.authorize(request.context, DESCRIBE, CLUSTER, CLUSTER_NAME))
-      // With describe cluster access all groups are returned. We keep this alternative for backward compatibility.
+      // 使用描述集群访问返回所有组。我们保留这个替代方案是为了向后兼容。
       requestHelper.sendResponseMaybeThrottle(request, requestThrottleMs =>
         createResponse(requestThrottleMs, groups, error))
     else {
@@ -1573,7 +1556,7 @@ class KafkaApis(val requestChannel: RequestChannel,
   def handleJoinGroupRequest(request: RequestChannel.Request, requestLocal: RequestLocal): Unit = {
     val joinGroupRequest = request.body[JoinGroupRequest]
 
-    // the callback for sending a join-group response
+    // 发送join-group响应的回调
     def sendResponseCallback(joinResult: JoinGroupResult): Unit = {
       def createResponse(requestThrottleMs: Int): AbstractResponse = {
         val protocolName = if (request.context.apiVersion() >= 7)
@@ -1601,20 +1584,18 @@ class KafkaApis(val requestChannel: RequestChannel,
     }
 
     if (joinGroupRequest.data.groupInstanceId != null && config.interBrokerProtocolVersion < KAFKA_2_3_IV0) {
-      // Only enable static membership when IBP >= 2.3, because it is not safe for the broker to use the static member logic
-      // until we are sure that all brokers support it. If static group being loaded by an older coordinator, it will discard
-      // the group.instance.id field, so static members could accidentally become "dynamic", which leads to wrong states.
+      // 只在IBP >= 2.3时启用静态成员关系，因为在我们确定所有代理都支持静态成员逻辑之前，代理使用静态成员逻辑是不安全的。
+      // 如果静态组是由旧的协调器加载的，它将丢弃group.instance.id字段，因此静态成员可能意外地变成“动态”，从而导致错误的状态。
       sendResponseCallback(JoinGroupResult(JoinGroupRequest.UNKNOWN_MEMBER_ID, Errors.UNSUPPORTED_VERSION))
     } else if (!authHelper.authorize(request.context, READ, GROUP, joinGroupRequest.data.groupId)) {
       sendResponseCallback(JoinGroupResult(JoinGroupRequest.UNKNOWN_MEMBER_ID, Errors.GROUP_AUTHORIZATION_FAILED))
     } else {
       val groupInstanceId = Option(joinGroupRequest.data.groupInstanceId)
 
-      // Only return MEMBER_ID_REQUIRED error if joinGroupRequest version is >= 4
-      // and groupInstanceId is configured to unknown.
+      // 只有joinGroupRequest version >= 4且配置groupInstanceId为unknown时，才会返回MEMBER_ID_REQUIRED错误。
       val requireKnownMemberId = joinGroupRequest.version >= 4 && groupInstanceId.isEmpty
 
-      // let the coordinator handle join-group
+      // 让协调器处理join-group
       val protocols = joinGroupRequest.data.protocols.valuesList.asScala.map(protocol =>
         (protocol.name, protocol.metadata)).toList
 
@@ -1650,12 +1631,11 @@ class KafkaApis(val requestChannel: RequestChannel,
     }
 
     if (syncGroupRequest.data.groupInstanceId != null && config.interBrokerProtocolVersion < KAFKA_2_3_IV0) {
-      // Only enable static membership when IBP >= 2.3, because it is not safe for the broker to use the static member logic
-      // until we are sure that all brokers support it. If static group being loaded by an older coordinator, it will discard
-      // the group.instance.id field, so static members could accidentally become "dynamic", which leads to wrong states.
+      // 只在IBP >= 2.3时启用静态成员关系，因为在我们确定所有代理都支持静态成员逻辑之前，代理使用静态成员逻辑是不安全的。
+      // 如果静态组是由旧的协调器加载的，它将丢弃group.instance.id字段，因此静态成员可能意外地变成“动态”，从而导致错误的状态。
       sendResponseCallback(SyncGroupResult(Errors.UNSUPPORTED_VERSION))
     } else if (!syncGroupRequest.areMandatoryProtocolTypeAndNamePresent()) {
-      // Starting from version 5, ProtocolType and ProtocolName fields are mandatory.
+      // 从版本5开始，ProtocolType和ProtocolName字段是必须的。
       sendResponseCallback(SyncGroupResult(Errors.INCONSISTENT_GROUP_PROTOCOL))
     } else if (!authHelper.authorize(request.context, READ, GROUP, syncGroupRequest.data.groupId)) {
       sendResponseCallback(SyncGroupResult(Errors.GROUP_AUTHORIZATION_FAILED))
@@ -1708,7 +1688,7 @@ class KafkaApis(val requestChannel: RequestChannel,
   def handleHeartbeatRequest(request: RequestChannel.Request): Unit = {
     val heartbeatRequest = request.body[HeartbeatRequest]
 
-    // the callback for sending a heartbeat response
+    // 发送心跳响应的回调
     def sendResponseCallback(error: Errors): Unit = {
       def createResponse(requestThrottleMs: Int): AbstractResponse = {
         val response = new HeartbeatResponse(
@@ -1723,9 +1703,8 @@ class KafkaApis(val requestChannel: RequestChannel,
     }
 
     if (heartbeatRequest.data.groupInstanceId != null && config.interBrokerProtocolVersion < KAFKA_2_3_IV0) {
-      // Only enable static membership when IBP >= 2.3, because it is not safe for the broker to use the static member logic
-      // until we are sure that all brokers support it. If static group being loaded by an older coordinator, it will discard
-      // the group.instance.id field, so static members could accidentally become "dynamic", which leads to wrong states.
+      // 只在IBP >= 2.3时启用静态成员关系，因为在我们确定所有代理都支持静态成员逻辑之前，代理使用静态成员逻辑是不安全的。
+      // 如果静态组是由旧的协调器加载的，它将丢弃group.instance.id字段，因此静态成员可能意外地变成“动态”，从而导致错误的状态。
       sendResponseCallback(Errors.UNSUPPORTED_VERSION)
     } else if (!authHelper.authorize(request.context, READ, GROUP, heartbeatRequest.data.groupId)) {
       requestHelper.sendResponseMaybeThrottle(request, requestThrottleMs =>
@@ -1795,12 +1774,11 @@ class KafkaApis(val requestChannel: RequestChannel,
   }
 
   def handleApiVersionsRequest(request: RequestChannel.Request): Unit = {
-    // Note that broker returns its full list of supported ApiKeys and versions regardless of current
-    // authentication state (e.g., before SASL authentication on an SASL listener, do note that no
-    // Kafka protocol requests may take place on an SSL listener before the SSL handshake is finished).
-    // If this is considered to leak information about the broker version a workaround is to use SSL
-    // with client authentication which is performed at an earlier stage of the connection where the
-    // ApiVersionRequest is not available.
+    // 请注意，无论当前的身份验证状态如何，代理都会返回其支持的apikey和版本的完整列表(例如，
+    // 在SASL侦听器上进行SASL身份验证之前，请注意在SSL握手完成之前，SSL侦听器上不可能发生Kafka协议请求)。
+    // 如果认为这会泄漏有关代理版本的信息，则解决方法是使用SSL和客户端身份验证，这是在连接的早期阶段执行的，
+    // 其中ApiVersionRequest不可用。
+
     def createResponseCallback(requestThrottleMs: Int): ApiVersionsResponse = {
       val apiVersionRequest = request.body[ApiVersionsRequest]
       if (apiVersionRequest.hasUnsupportedRequestVersion) {
@@ -1875,7 +1853,7 @@ class KafkaApis(val requestChannel: RequestChannel,
           val result = results.find(topicName)
           result.setErrorCode(error.error.code)
             .setErrorMessage(error.message)
-          // Reset any configs in the response if Create failed
+          //如果Create失败，则重置响应中的任何配置
           if (error != ApiError.NONE) {
             result.setConfigs(List.empty.asJava)
               .setNumPartitions(-1)
@@ -1924,7 +1902,7 @@ class KafkaApis(val requestChannel: RequestChannel,
       }.toMap
       sendResponseCallback(result)
     } else {
-      // Special handling to add duplicate topics to the response
+      // 向响应添加重复主题的特殊处理
       val topics = createPartitionsRequest.data.topics.asScala.toSeq
       val dupes = topics.groupBy(_.name)
         .filter { _._2.size > 1 }
@@ -2007,10 +1985,8 @@ class KafkaApis(val requestChannel: RequestChannel,
           topic.setErrorCode(Errors.UNKNOWN_TOPIC_ID.code)
         } else if (topicIdsFromRequest.contains(topic.topicId) && !authorizedDescribeTopics.contains(topic.name)) {
 
-          // Because the client does not have Describe permission, the name should
-          // not be returned in the response. Note, however, that we do not consider
-          // the topicId itself to be sensitive, so there is no reason to obscure
-          // this case with `UNKNOWN_TOPIC_ID`.
+          // 因为客户端没有描述权限，所以不应该在响应中返回名称。但是请注意，我们并不认为topicId本身是敏感的，
+          // 因此没有理由用' UNKNOWN_TOPIC_ID '来掩盖这种情况。
           topic.setName(null)
           topic.setErrorCode(Errors.TOPIC_AUTHORIZATION_FAILED.code)
         } else if (!authorizedDeleteTopics.contains(topic.name)) {
@@ -2021,7 +1997,7 @@ class KafkaApis(val requestChannel: RequestChannel,
           toDelete += topic.name
         }
       }
-      // If no authorized topics return immediately
+      // 如果没有授权的主题立即返回
       if (toDelete.isEmpty)
         sendResponseCallback(results)
       else {
@@ -2071,7 +2047,7 @@ class KafkaApis(val requestChannel: RequestChannel,
         authorizedForDeleteTopicOffsets += (topicPartition -> offset)
     }
 
-    // the callback for sending a DeleteRecordsResponse
+    // 发送DeleteRecordsResponse的回调
     def sendResponseCallback(authorizedTopicResponses: Map[TopicPartition, DeleteRecordsPartitionResult]): Unit = {
       val mergedResponseStatus = authorizedTopicResponses ++ unauthorizedTopicResponses ++ nonExistingTopicResponses
       mergedResponseStatus.forKeyValue { (topicPartition, status) =>
@@ -2103,7 +2079,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     if (authorizedForDeleteTopicOffsets.isEmpty)
       sendResponseCallback(Map.empty)
     else {
-      // call the replica manager to append messages to the replicas
+      // 调用副本管理器将消息附加到副本
       replicaManager.deleteRecords(
         deleteRecordsRequest.data.timeoutMs.toLong,
         authorizedForDeleteTopicOffsets,
@@ -2130,8 +2106,8 @@ class KafkaApis(val requestChannel: RequestChannel,
       def createResponse(requestThrottleMs: Int): AbstractResponse = {
         val finalError =
           if (initProducerIdRequest.version < 4 && result.error == Errors.PRODUCER_FENCED) {
-            // For older clients, they could not understand the new PRODUCER_FENCED error code,
-            // so we need to return the INVALID_PRODUCER_EPOCH to have the same client handling logic.
+            // 对于较老的客户机，它们无法理解新的PRODUCER_FENCED错误代码，
+            // 因此我们需要返回INVALID_PRODUCER_EPOCH以具有相同的客户机处理逻辑。
             Errors.INVALID_PRODUCER_EPOCH
           } else {
             result.error
@@ -2171,8 +2147,8 @@ class KafkaApis(val requestChannel: RequestChannel,
         def createResponse(requestThrottleMs: Int): AbstractResponse = {
           val finalError =
             if (endTxnRequest.version < 2 && error == Errors.PRODUCER_FENCED) {
-              // For older clients, they could not understand the new PRODUCER_FENCED error code,
-              // so we need to return the INVALID_PRODUCER_EPOCH to have the same client handling logic.
+              // 对于较老的客户机，它们无法理解新的PRODUCER_FENCED错误代码，因此我们需要返回INVALID_PRODUCER_EPOCH以
+              // 具有相同的客户机处理逻辑。
               Errors.INVALID_PRODUCER_EPOCH
             } else {
               error
@@ -2222,10 +2198,8 @@ class KafkaApis(val requestChannel: RequestChannel,
     }
 
     /**
-      * This is the call back invoked when a log append of transaction markers succeeds. This can be called multiple
-      * times when handling a single WriteTxnMarkersRequest because there is one append per TransactionMarker in the
-      * request, so there could be multiple appends of markers to the log. The final response will be sent only
-      * after all appends have returned.
+      * 这是在事务标记的日志追加成功时调用的回调。在处理单个WriteTxnMarkersRequest时可以多次调用该方法，
+      * 因为请求中的每个TransactionMarker都有一个追加，因此可能会有多个追加到日志中的标记。只有在所有附件返回后才会发送最终响应。
       */
     def maybeSendResponseCallback(producerId: Long, result: TransactionResult)(responseStatus: Map[TopicPartition, PartitionResponse]): Unit = {
       trace(s"End transaction marker append for producer id $producerId completed with status: $responseStatus")
@@ -2236,8 +2210,7 @@ class KafkaApis(val requestChannel: RequestChannel,
       }.keys
 
       if (successfulOffsetsPartitions.nonEmpty) {
-        // as soon as the end transaction marker has been written for a transactional offset commit,
-        // call to the group coordinator to materialize the offsets into the cache
+        // 一旦为事务性偏移量提交写入结束事务标记，就调用组协调器将偏移量具体化到缓存中
         try {
           groupCoordinator.scheduleHandleTxnCompletion(producerId, successfulOffsetsPartitions, result)
         } catch {
@@ -2253,10 +2226,9 @@ class KafkaApis(val requestChannel: RequestChannel,
         requestHelper.sendResponseExemptThrottle(request, new WriteTxnMarkersResponse(errors))
     }
 
-    // TODO: The current append API makes doing separate writes per producerId a little easier, but it would
-    // be nice to have only one append to the log. This requires pushing the building of the control records
-    // into Log so that we only append those having a valid producer epoch, and exposing a new appendControlRecord
-    // API in ReplicaManager. For now, we've done the simpler approach
+    // TODO: 当前的追加API使得对每个producerId进行单独的写操作变得简单一些，但是最好只对日志进行一次追加。
+    //  这需要将控件记录的构建推入Log，以便我们只附加那些具有有效生产者纪元的记录，
+    //  并在ReplicaManager中公开一个新的appendControlRecord API。现在，我们采用了更简单的方法
     var skippedMarkers = 0
     for (marker <- markers.asScala) {
       val producerId = marker.producerId
@@ -2302,8 +2274,7 @@ class KafkaApis(val requestChannel: RequestChannel,
       }
     }
 
-    // No log appends were written as all partitions had incorrect log format
-    // so we need to send the error response
+    // 由于所有分区都有不正确的日志格式，因此没有写入日志追加部分，因此我们需要发送错误响应
     if (skippedMarkers == markers.size)
       requestHelper.sendResponseExemptThrottle(request, new WriteTxnMarkersResponse(errors))
   }
@@ -2338,9 +2309,8 @@ class KafkaApis(val requestChannel: RequestChannel,
       }
 
       if (unauthorizedTopicErrors.nonEmpty || nonExistingTopicErrors.nonEmpty) {
-        // Any failed partition check causes the entire request to fail. We send the appropriate error codes for the
-        // partitions which failed, and an 'OPERATION_NOT_ATTEMPTED' error code for the partitions which succeeded
-        // the authorization check to indicate that they were not added to the transaction.
+        // 任何分区检查失败都会导致整个请求失败。对于失败的分区，我们发送适当的错误代码，对于授权检查成功的分区，
+        // 我们发送一个“operation_not_attempts”错误代码，以表明它们没有被添加到事务中。
         val partitionErrors = unauthorizedTopicErrors ++ nonExistingTopicErrors ++
           authorizedPartitions.map(_ -> Errors.OPERATION_NOT_ATTEMPTED)
         requestHelper.sendResponseMaybeThrottle(request, requestThrottleMs =>
@@ -2350,8 +2320,8 @@ class KafkaApis(val requestChannel: RequestChannel,
           def createResponse(requestThrottleMs: Int): AbstractResponse = {
             val finalError =
               if (addPartitionsToTxnRequest.version < 2 && error == Errors.PRODUCER_FENCED) {
-                // For older clients, they could not understand the new PRODUCER_FENCED error code,
-                // so we need to return the old INVALID_PRODUCER_EPOCH to have the same client handling logic.
+                // 对于较旧的客户机，它们无法理解新的PRODUCER_FENCED错误代码，
+                // 因此我们需要返回旧的INVALID_PRODUCER_EPOCH以具有相同的客户机处理逻辑。
                 Errors.INVALID_PRODUCER_EPOCH
               } else {
                 error
