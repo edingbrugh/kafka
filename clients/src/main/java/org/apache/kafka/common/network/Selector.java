@@ -469,7 +469,7 @@ public class Selector implements Selectable, AutoCloseable {
         if (numReadyKeys > 0 || !immediatelyConnectedKeys.isEmpty() || dataInBuffers) {
             Set<SelectionKey> readyKeys = this.nioSelector.selectedKeys();
 
-            // Poll from channels that have buffered data (but nothing more from the underlying socket)
+            // 从具有缓冲数据的通道轮询（但仅来自底层套接字）
             if (dataInBuffers) {
                 keysWithBufferedRead.removeAll(readyKeys); //so no channel gets polled twice
                 Set<SelectionKey> toPoll = keysWithBufferedRead;
@@ -477,9 +477,9 @@ public class Selector implements Selectable, AutoCloseable {
                 pollSelectionKeys(toPoll, false, endSelect);
             }
 
-            // Poll from channels where the underlying socket has more data
+            // 从底层套接字有更多数据的通道轮询
             pollSelectionKeys(readyKeys, false, endSelect);
-            // Clear all selected keys so that they are included in the ready count for the next select
+            // 清除所有选定的键，以便它们包含在下一次选择的就绪计数中
             readyKeys.clear();
 
             pollSelectionKeys(immediatelyConnectedKeys, true, endSelect);
@@ -491,11 +491,10 @@ public class Selector implements Selectable, AutoCloseable {
         long endIo = time.nanoseconds();
         this.sensors.ioTime.record(endIo - endSelect, time.milliseconds());
 
-        // Close channels that were delayed and are now ready to be closed
+        // 关闭延迟的通道，现在准备关闭
         completeDelayedChannelClose(endIo);
 
-        // we use the time at the end of select to ensure that we don't close any connections that
-        // have just been processed in pollSelectionKeys
+        // 我们使用 select 结束时的时间来确保我们不会关闭任何刚刚在 pollSelectionKeys 中处理过的连接
         maybeCloseOldestConnection(endSelect);
     }
 

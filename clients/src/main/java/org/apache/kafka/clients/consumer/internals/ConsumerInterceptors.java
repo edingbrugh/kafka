@@ -41,19 +41,16 @@ public class ConsumerInterceptors<K, V> implements Closeable {
     }
 
     /**
-     * This is called when the records are about to be returned to the user.
+     * 当记录即将返回给用户时调用。
      * <p>
-     * This method calls {@link ConsumerInterceptor#onConsume(ConsumerRecords)} for each
-     * interceptor. Records returned from each interceptor get passed to onConsume() of the next interceptor
-     * in the chain of interceptors.
+         此方法为每个拦截器调用 {@link ConsumerRecords(ConsumerRecords)}。从每个拦截器返回的记录被传递给拦截器链中下一个拦截器的 onConsume()。
      * <p>
-     * This method does not throw exceptions. If any of the interceptors in the chain throws an exception,
-     * it gets caught and logged, and next interceptor in the chain is called with 'records' returned by the
-     * previous successful interceptor onConsume call.
+     * 此方法不会引发异常。如果链中的任何拦截器抛出异常，它会被捕获并记录，并调用链中的下一个拦截器，并使用上一个成功的拦截器 onConsume 调用返回的“记录”。
      *
      * @param records records to be consumed by the client.
      * @return records that are either modified by interceptors or same as records passed to this method.
      */
+    // Map<TopicPartition, List<ConsumerRecord<K, V>>>
     public ConsumerRecords<K, V> onConsume(ConsumerRecords<K, V> records) {
         ConsumerRecords<K, V> interceptRecords = records;
         for (ConsumerInterceptor<K, V> interceptor : this.interceptors) {

@@ -128,17 +128,7 @@ class LogSegment private[log] (val log: FileRecords,
   }
 
   /**
-   * Append the given messages starting with the given offset. Add
-   * an entry to the index if needed.
-   *
-   * It is assumed this method is being called from within a lock.
-   *
-   * @param largestOffset The last offset in the message set
-   * @param largestTimestamp The largest timestamp in the message set.
-   * @param shallowOffsetOfMaxTimestamp The offset of the message that has the largest timestamp in the messages to append.
-   * @param records The log entries to append.
-   * @return the physical position in the file of the appended records
-   * @throws LogSegmentOffsetOverflowException if the largest offset causes index offset overflow
+   * 以给定的偏移量开始追加给定的消息。如果需要，向索引中添加一个条目。假设这个方法是从锁中调用的。
    */
   @nonthreadsafe
   def append(largestOffset: Long,
@@ -154,14 +144,14 @@ class LogSegment private[log] (val log: FileRecords,
 
       ensureOffsetInRange(largestOffset)
 
-      // append the messages
+      // 附加消息
       val appendedBytes = log.append(records)
       trace(s"Appended $appendedBytes to ${log.file} at end offset $largestOffset")
-      // Update the in memory max timestamp and corresponding offset.
+      // 更新内存中的最大时间戳和相应的偏移量。
       if (largestTimestamp > maxTimestampSoFar) {
         maxTimestampAndOffsetSoFar = TimestampOffset(largestTimestamp, shallowOffsetOfMaxTimestamp)
       }
-      // append an entry to the index (if needed)
+      // 将一个条目附加到索引(如果需要)
       if (bytesSinceLastIndexEntry > indexIntervalBytes) {
         offsetIndex.append(largestOffset, physicalPosition)
         timeIndex.maybeAppend(maxTimestampSoFar, offsetOfMaxTimestampSoFar)

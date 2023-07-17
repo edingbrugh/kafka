@@ -107,13 +107,9 @@ public class ConsumerNetworkClient implements Closeable {
     }
 
     /**
-     * Send a new request. Note that the request is not actually transmitted on the
-     * network until one of the {@link #poll(Timer)} variants is invoked. At this
-     * point the request will either be transmitted successfully or will fail.
-     * Use the returned future to obtain the result of the send. Note that there is no
-     * need to check for disconnects explicitly on the {@link ClientResponse} object;
-     * instead, the future will be failed with a {@link DisconnectException}.
-     *
+     * 发送新请求。请注意，在调用 {@link poll(Timer)} 变体之一之前，该请求实际上并未在网络上传输。此时，请求要么成功传输，要么失败。
+     * 使用返回的未来获取发送的结果。请注意，无需在 {@link ClientResponse} 对象上显式检查断开连接；相反，future 将因
+     * {@link DisconnectException} 而失败。
      * @param node The destination of the request
      * @param requestBuilder A builder for the request payload
      * @param requestTimeoutMs Maximum time in milliseconds to await a response before disconnecting the socket and
@@ -130,7 +126,7 @@ public class ConsumerNetworkClient implements Closeable {
             requestTimeoutMs, completionHandler);
         unsent.put(node, clientRequest);
 
-        // wakeup the client in case it is blocking in poll so that we can send the queued request
+        // 唤醒客户端以防它在轮询中阻塞，以便我们可以发送排队的请求
         client.wakeup();
         return completionHandler.future;
     }
@@ -154,7 +150,7 @@ public class ConsumerNetworkClient implements Closeable {
     }
 
     /**
-     * Block waiting on the metadata refresh with a timeout.
+     * 阻止等待元数据刷新超时。
      *
      * @return true if update succeeded, false otherwise.
      */

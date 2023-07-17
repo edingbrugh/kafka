@@ -166,11 +166,9 @@ public class FetchResponse extends AbstractResponse {
     }
 
     /**
-     * Returns `partition.records` as `Records` (instead of `BaseRecords`). If `records` is `null`, returns `MemoryRecords.EMPTY`.
-     *
-     * If this response was deserialized after a fetch, this method should never fail. An example where this would
-     * fail is a down-converted response (e.g. LazyDownConversionRecords) on the broker (before it's serialized and
-     * sent on the wire).
+     * 返回 `partition.records` 作为 `Records`（而不是 `BaseRecords`）。如果 `records` 为 `null`，则返回 `MemoryRecords.EMPTY`。
+     * 如果此响应在获取后被反序列化，则此方法永远不会失败。这将失败的一个示例是代理上的下转换响应（
+     * 例如 LazyDownConversionRecords）（在它被序列化并在线发送之前）
      *
      * @param partition partition data
      * @return Records or empty record if the records in PartitionData is null.

@@ -300,7 +300,7 @@ public class Sender implements Runnable {
             try {
                 transactionManager.maybeResolveSequences();
 
-                // do not continue sending if the transaction manager is in a failed state
+                // 如果事务管理器处于失败状态，是否不继续发送
                 if (transactionManager.hasFatalError()) {
                     RuntimeException lastError = transactionManager.lastError();
                     if (lastError != null)
@@ -309,8 +309,7 @@ public class Sender implements Runnable {
                     return;
                 }
 
-                // Check whether we need a new producerId. If so, we will enqueue an InitProducerId
-                // request which will be sent below
+                // 检查我们是否需要一个新的producerId。如果是这样，我们将排队一个InitProducerId请求，它将在下面发送
                 transactionManager.bumpIdempotentEpochAndResetIdIfNeeded();
 
                 if (maybeSendAndPollTransactionalRequest()) {
@@ -410,11 +409,11 @@ public class Sender implements Runnable {
     }
 
     /**
-     * Returns true if a transactional request is sent or polled, or if a FindCoordinator request is enqueued
+     * 如果事务性请求被发送或轮询，或者FindCoordinator请求进入队列，则返回true
      */
     private boolean maybeSendAndPollTransactionalRequest() {
         if (transactionManager.hasInFlightRequest()) {
-            // as long as there are outstanding transactional requests, we simply wait for them to return
+            // 只要有未完成的事务请求，我们就只需等待它们返回
             client.poll(retryBackoffMs, time.milliseconds());
             return true;
         }

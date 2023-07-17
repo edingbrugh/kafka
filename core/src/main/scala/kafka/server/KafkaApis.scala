@@ -85,7 +85,7 @@ import scala.jdk.CollectionConverters._
 import scala.util.{Failure, Success, Try}
 
 /**
- * Logic to handle the various Kafka requests
+ * todo 处理各种Kafka请求的逻辑
  */
 class KafkaApis(val requestChannel: RequestChannel,
                 val metadataSupport: MetadataSupport,
@@ -152,7 +152,7 @@ class KafkaApis(val requestChannel: RequestChannel,
   }
 
   /**
-   * Top-level method that handles all requests and multiplexes to the right api
+   * 处理所有请求和到正确api的多路复用的顶级方法
    */
   override def handle(request: RequestChannel.Request, requestLocal: RequestLocal): Unit = {
     try {
@@ -262,6 +262,8 @@ class KafkaApis(val requestChannel: RequestChannel,
         s"${leaderAndIsrRequest.brokerEpoch} smaller than the current broker epoch ${zkSupport.controller.brokerEpoch}")
       requestHelper.sendResponseExemptThrottle(request, leaderAndIsrRequest.getErrorResponse(0, Errors.STALE_BROKER_EPOCH.exception))
     } else {
+
+      // todo 1 创建路径
       val response = replicaManager.becomeLeaderOrFollower(correlationId, leaderAndIsrRequest,
         RequestHandlerHelper.onLeadershipChange(groupCoordinator, txnCoordinator, _, _))
       requestHelper.sendResponseExemptThrottle(request, response)
@@ -550,15 +552,13 @@ class KafkaApis(val requestChannel: RequestChannel,
     val nonExistingTopicResponses = mutable.Map[TopicPartition, PartitionResponse]()
     val invalidRequestResponses = mutable.Map[TopicPartition, PartitionResponse]()
     val authorizedRequestInfo = mutable.Map[TopicPartition, MemoryRecords]()
-    // cache the result to avoid redundant authorization calls
+    // 缓存结果以避免冗余的授权调用
     val authorizedTopics = authHelper.filterByAuthorized(request.context, WRITE, TOPIC,
       produceRequest.data().topicData().asScala)(_.name())
 
     produceRequest.data.topicData.forEach(topic => topic.partitionData.forEach { partition =>
       val topicPartition = new TopicPartition(topic.name, partition.index)
-      // This caller assumes the type is MemoryRecords and that is true on current serialization
-      // We cast the type to avoid causing big change to code base.
-      // https://issues.apache.org/jira/browse/KAFKA-10698
+      // 这个调用者假定类型是MemoryRecords，在当前序列化中也是如此。我们强制转换类型是为了避免对代码基造成较大的更改。
       val memoryRecords = partition.records.asInstanceOf[MemoryRecords]
       if (!authorizedTopics.contains(topicPartition.topic))
         unauthorizedTopicResponses += topicPartition -> new PartitionResponse(Errors.TOPIC_AUTHORIZATION_FAILED)
@@ -574,10 +574,8 @@ class KafkaApis(val requestChannel: RequestChannel,
         }
     })
 
-    // the callback for sending a produce response
-    // The construction of ProduceResponse is able to accept auto-generated protocol data so
-    // KafkaApis#handleProduceRequest should apply auto-generated protocol to avoid extra conversion.
-    // https://issues.apache.org/jira/browse/KAFKA-10730
+    // producerresponse的构造能够接受自动生成的协议数据，
+    // 所以KafkaApishandleProduceRequest应该应用自动生成的协议来避免额外的转换。
     @nowarn("cat=deprecation")
     def sendResponseCallback(responseStatus: Map[TopicPartition, PartitionResponse]): Unit = {
       val mergedResponseStatus = responseStatus ++ unauthorizedTopicResponses ++ nonExistingTopicResponses ++ invalidRequestResponses
@@ -594,9 +592,8 @@ class KafkaApis(val requestChannel: RequestChannel,
         }
       }
 
-      // Record both bandwidth and request quota-specific values and throttle by muting the channel if any of the quotas
-      // have been violated. If both quotas have been violated, use the max throttle time between the two quotas. Note
-      // that the request quota is not enforced if acks == 0.
+      // 记录带宽和请求配额特定的值，如果违反了任何配额，则通过静音通道进行节流。如果违反了两个配额，
+      // 则使用两个配额之间的最大节流时间。请注意，如果acks == 0，则不强制执行请求配额。
       val timeMs = time.milliseconds()
       val bandwidthThrottleTimeMs = quotas.produce.maybeRecordAndGetThrottleTimeMs(request, requestSize, timeMs)
       val requestThrottleTimeMs =
@@ -612,11 +609,10 @@ class KafkaApis(val requestChannel: RequestChannel,
         }
       }
 
-      // Send the response immediately. In case of throttling, the channel has already been muted.
+      // 立即发送响应。在节流的情况下，信道已经被静音。
       if (produceRequest.acks == 0) {
-        // no operation needed if producer request.required.acks = 0; however, if there is any error in handling
-        // the request, since no response is expected by the producer, the server will close socket server so that
-        // the producer client will know that some error has happened and will refresh its metadata
+        // 如果生产者request.required.acks = 0，则不需要操作;但是，如果在处理请求时出现任何错误，
+        // 由于生产者不期望响应，服务器将关闭套接字服务器，以便生产者客户端知道发生了错误并刷新其元数据
         if (errorInResponse) {
           val exceptionsSummary = mergedResponseStatus.map { case (topicPartition, status) =>
             topicPartition -> status.error.exceptionName
@@ -628,8 +624,7 @@ class KafkaApis(val requestChannel: RequestChannel,
           )
           requestChannel.closeConnection(request, new ProduceResponse(mergedResponseStatus.asJava).errorCounts)
         } else {
-          // Note that although request throttling is exempt for acks == 0, the channel may be throttled due to
-          // bandwidth quota violation.
+          // 请注意，尽管请求限制对于acks == 0是免除的，但是由于带宽配额违反，通道可能会被限制。
           requestHelper.sendNoOpResponseExemptThrottle(request)
         }
       } else {
@@ -648,7 +643,7 @@ class KafkaApis(val requestChannel: RequestChannel,
     else {
       val internalTopicsAllowed = request.header.clientId == AdminUtils.AdminClientId
 
-      // call the replica manager to append messages to the replicas
+      // 调用副本管理器将消息附加到副本
       replicaManager.appendRecords(
         timeout = produceRequest.timeout.toLong,
         requiredAcks = produceRequest.acks,
@@ -658,9 +653,7 @@ class KafkaApis(val requestChannel: RequestChannel,
         requestLocal = requestLocal,
         responseCallback = sendResponseCallback,
         recordConversionStatsCallback = processingStatsCallback)
-
-      // if the request is put into the purgatory, it will have a held reference and hence cannot be garbage collected;
-      // hence we clear its data here in order to let GC reclaim its memory since it is already appended to log
+      // 如果请求被放入purgatory，它将有一个持有的引用，因此不能被垃圾收集;因此，我们在这里清除它的数据，以便让GC回收它的内存，因为它已经附加到日志
       produceRequest.clearPartitionRecords()
     }
   }
@@ -2760,6 +2753,8 @@ class KafkaApis(val requestChannel: RequestChannel,
   def handleAlterReplicaLogDirsRequest(request: RequestChannel.Request): Unit = {
     val alterReplicaDirsRequest = request.body[AlterReplicaLogDirsRequest]
     if (authHelper.authorize(request.context, ALTER, CLUSTER, CLUSTER_NAME)) {
+
+      // todo handleAlterReplicaLogDirsRequest
       val result = replicaManager.alterReplicaLogDirs(alterReplicaDirsRequest.partitionDirs.asScala)
       requestHelper.sendResponseMaybeThrottle(request, requestThrottleMs =>
         new AlterReplicaLogDirsResponse(new AlterReplicaLogDirsResponseData()

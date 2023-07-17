@@ -856,7 +856,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
      */
     @Override
     public Future<RecordMetadata> send(ProducerRecord<K, V> record, Callback callback) {
-        // intercept the record, which can be potentially modified; this method does not throw exceptions
+        // 拦截器，处理信息
         ProducerRecord<K, V> interceptedRecord = this.interceptors.onSend(record);
         return doSend(interceptedRecord, callback);
     }
@@ -875,7 +875,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
         TopicPartition tp = null;
         try {
             throwIfProducerClosed();
-            // first make sure the metadata for the topic is available
+            // 首先确保主题的元数据可用
             long nowMs = time.milliseconds();
             ClusterAndWaitTime clusterAndWaitTime;
             try {
@@ -934,7 +934,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                 if (log.isTraceEnabled()) {
                     log.trace("Retrying append due to new batch creation for topic {} partition {}. The old partition was {}", record.topic(), partition, prevPartition);
                 }
-                // producer callback will make sure to call both 'callback' and interceptor callback
+                // 生产者回调将确保同时调用'callback'和拦截器回调
                 interceptCallback = new InterceptorCallback<>(callback, this.interceptors, tp);
 
                 result = accumulator.append(tp, timestamp, serializedKey,
@@ -990,17 +990,17 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
     }
 
     /**
-     * Wait for cluster metadata including partitions for the given topic to be available.
+     * 等待包含给定主题分区的集群元数据可用。
      * @param topic The topic we want metadata for
      * @param partition A specific partition expected to exist in metadata, or null if there's no preference
      * @param nowMs The current time in ms
      * @param maxWaitMs The maximum time in ms for waiting on the metadata
-     * @return The cluster containing topic metadata and the amount of time we waited in ms
+     * @return T包含主题元数据的集群和我们等待的时间，单位为毫秒
      * @throws TimeoutException if metadata could not be refreshed within {@code max.block.ms}
      * @throws KafkaException for all Kafka-related exceptions, including the case where this method is called after producer close
      */
     private ClusterAndWaitTime waitOnMetadata(String topic, Integer partition, long nowMs, long maxWaitMs) throws InterruptedException {
-        // add topic to metadata topic list if it is not there already and reset expiry
+        // 将主题添加到元数据主题列表中，如果该主题不存在并重置过期
         Cluster cluster = metadata.fetch();
 
         if (cluster.invalidTopics().contains(topic))
@@ -1009,16 +1009,14 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
         metadata.add(topic, nowMs);
 
         Integer partitionsCount = cluster.partitionCountForTopic(topic);
-        // Return cached metadata if we have it, and if the record's partition is either undefined
-        // or within the known partition range
+        // 如果我们有缓存的元数据，并且记录的分区是未定义的或在已知的分区范围内，则返回缓存的元数据
         if (partitionsCount != null && (partition == null || partition < partitionsCount))
             return new ClusterAndWaitTime(cluster, 0);
 
         long remainingWaitMs = maxWaitMs;
         long elapsed = 0;
-        // Issue metadata requests until we have metadata for the topic and the requested partition,
-        // or until maxWaitTimeMs is exceeded. This is necessary in case the metadata
-        // is stale and the number of partitions for this topic has increased in the meantime.
+        // 发出元数据请求，直到我们拥有主题和请求的分区的元数据，或者直到超过maxWaitTimeMs。
+        // 如果元数据过时，并且此主题的分区数量同时增加，则这是必要的。
         do {
             if (partition != null) {
                 log.trace("Requesting metadata update for partition {} of topic {}.", partition, topic);
@@ -1031,7 +1029,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             try {
                 metadata.awaitUpdate(version, remainingWaitMs);
             } catch (TimeoutException ex) {
-                // Rethrow with original maxWaitMs to prevent logging exception with remainingWaitMs
+                // 用原来的maxWaitMs重新抛出，以防止剩余的waitms记录异常
                 throw new TimeoutException(
                         String.format("Topic %s not present in metadata after %d ms.",
                                 topic, maxWaitMs));

@@ -40,13 +40,13 @@ public class FetchRequest extends AbstractRequest {
 
     public static final int CONSUMER_REPLICA_ID = -1;
 
-    // default values for older versions where a request level limit did not exist
+    // 不存在请求级别限制的旧版本的默认值
     public static final int DEFAULT_RESPONSE_MAX_BYTES = Integer.MAX_VALUE;
     public static final long INVALID_LOG_START_OFFSET = -1L;
 
     private final FetchRequestData data;
 
-    // These are immutable read-only structures derived from FetchRequestData
+    // 这些是从 FetchRequestData 派生的不可变只读结构
     private final Map<TopicPartition, PartitionData> fetchData;
     private final List<TopicPartition> toForget;
     private final FetchMetadata metadata;

@@ -321,6 +321,7 @@ class Partition(val topicPartition: TopicPartition,
             topicId.foreach(log.assignTopicId)
           log
         case None =>
+          // todo 7 创建路径
           createLog(isNew, isFutureReplica, offsetCheckpoints, topicId)
       }
     }
@@ -328,6 +329,7 @@ class Partition(val topicPartition: TopicPartition,
     if (isFutureReplica) {
       this.futureLog = Some(maybeCreate(this.futureLog))
     } else {
+      // todo 6 创建路径
       this.log = Some(maybeCreate(this.log))
     }
   }
@@ -346,6 +348,7 @@ class Partition(val topicPartition: TopicPartition,
     logManager.initializingLog(topicPartition)
     var maybeLog: Option[Log] = None
     try {
+      // todo 8 创建路径
       val log = logManager.getOrCreateLog(topicPartition, isNew, isFutureReplica, topicId)
       maybeLog = Some(log)
       updateHighWatermark(log)
@@ -517,6 +520,7 @@ class Partition(val topicPartition: TopicPartition,
   def makeLeader(partitionState: LeaderAndIsrPartitionState,
                  highWatermarkCheckpoints: OffsetCheckpoints,
                  topicId: Option[Uuid]): Boolean = {
+    // todo 3 创建路径
     val (leaderHWIncremented, isNewLeader) = inWriteLock(leaderIsrUpdateLock) {
       // record the epoch of the controller that made the leadership decision. This is useful while updating the isr
       // to maintain the decision maker controller's epoch in the zookeeper path
@@ -533,6 +537,7 @@ class Partition(val topicPartition: TopicPartition,
         removingReplicas = removingReplicas
       )
       try {
+        // todo 4 创建路径
         createLogIfNotExists(partitionState.isNew, isFutureReplica = false, highWatermarkCheckpoints, topicId)
       } catch {
         case e: ZooKeeperClientException =>
@@ -1032,7 +1037,7 @@ class Partition(val topicPartition: TopicPartition,
           val minIsr = leaderLog.config.minInSyncReplicas
           val inSyncSize = isrState.isr.size
 
-          // Avoid writing to leader if there are not enough insync replicas to make it safe
+          // 如果没有足够的同步副本来保证安全，请避免写信给leader
           if (inSyncSize < minIsr && requiredAcks == -1) {
             throw new NotEnoughReplicasException(s"The size of the current ISR ${isrState.isr} " +
               s"is insufficient to satisfy the min.isr requirement of $minIsr for partition $topicPartition")
@@ -1041,7 +1046,7 @@ class Partition(val topicPartition: TopicPartition,
           val info = leaderLog.appendAsLeader(records, leaderEpoch = this.leaderEpoch, origin,
             interBrokerProtocolVersion, requestLocal)
 
-          // we may need to increment high watermark since ISR could be down to 1
+          // 我们可能需要增加高水位，因为ISR可以降低到1
           (info, maybeIncrementLeaderHW(leaderLog))
 
         case None =>
