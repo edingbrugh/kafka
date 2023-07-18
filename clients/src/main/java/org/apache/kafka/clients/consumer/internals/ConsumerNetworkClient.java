@@ -47,9 +47,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * Higher level consumer access to the network layer with basic support for request futures. This class
- * is thread-safe, but provides no synchronization for response callbacks. This guarantees that no locks
- * are held when they are invoked.
+ * 更高级别的消费者访问网络层，基本支持请求未来。该类是线程安全的，但不为响应回调提供同步。这保证了在调用锁时不持有锁。
  */
 public class ConsumerNetworkClient implements Closeable {
     private static final int MAX_POLL_TIMEOUT_MS = 5000;
@@ -100,14 +98,14 @@ public class ConsumerNetworkClient implements Closeable {
     }
 
     /**
-     * Send a request with the default timeout. See {@link #send(Node, AbstractRequest.Builder, int)}.
+     * 使用默认超时发送请求. See {@link #send(Node, AbstractRequest.Builder, int)}.
      */
     public RequestFuture<ClientResponse> send(Node node, AbstractRequest.Builder<?> requestBuilder) {
         return send(node, requestBuilder, requestTimeoutMs);
     }
 
     /**
-     * 发送新请求。请注意，在调用 {@link poll(Timer)} 变体之一之前，该请求实际上并未在网络上传输。此时，请求要么成功传输，要么失败。
+     * 发送新请求。请注意，在调用 { @link poll(Timer)} 变体之一之前，该请求实际上并未在网络上传输。此时，请求要么成功传输，要么失败。
      * 使用返回的未来获取发送的结果。请注意，无需在 {@link ClientResponse} 对象上显式检查断开连接；相反，future 将因
      * {@link DisconnectException} 而失败。
      * @param node The destination of the request
@@ -163,8 +161,7 @@ public class ConsumerNetworkClient implements Closeable {
     }
 
     /**
-     * Ensure our metadata is fresh (if an update is expected, this will block
-     * until it has completed).
+     * 使用默认超时发送请求
      */
     boolean ensureFreshMetadata(Timer timer) {
         if (this.metadata.updateRequested() || this.metadata.timeToNextUpdate(timer.currentTimeMs()) == 0) {
@@ -176,19 +173,17 @@ public class ConsumerNetworkClient implements Closeable {
     }
 
     /**
-     * Wakeup an active poll. This will cause the polling thread to throw an exception either
-     * on the current poll if one is active, or the next poll.
+     * 唤醒一个活动的轮询。这将导致轮询线程在当前轮询(如果一个轮询是活动的)或下一个轮询上抛出异常。
      */
     public void wakeup() {
-        // wakeup should be safe without holding the client lock since it simply delegates to
-        // Selector's wakeup, which is thread-safe
+        // wakeup在不持有客户端锁的情况下应该是安全的，因为它只是委托给Selector的唤醒，这是线程安全的
         log.debug("Received user wakeup");
         this.wakeup.set(true);
         this.client.wakeup();
     }
 
     /**
-     * Block indefinitely until the given request future has finished.
+     * 无限期阻塞，直到给定的请求完成。
      * @param future The request future to await.
      * @throws WakeupException if {@link #wakeup()} is called from another thread
      * @throws InterruptException if the calling thread is interrupted
@@ -199,7 +194,7 @@ public class ConsumerNetworkClient implements Closeable {
     }
 
     /**
-     * Block until the provided request future request has finished or the timeout has expired.
+     * 阻塞，直到所提供的请求(未来请求)已完成或超时已过期。
      * @param future The request future to wait for
      * @param timer Timer bounding how long this method can block
      * @return true if the future is done, false otherwise
@@ -214,7 +209,7 @@ public class ConsumerNetworkClient implements Closeable {
     }
 
     /**
-     * Poll for any network IO.
+     * 轮询任何网络IO。
      * @param timer Timer bounding how long this method can block
      * @throws WakeupException if {@link #wakeup()} is called from another thread
      * @throws InterruptException if the calling thread is interrupted
@@ -224,7 +219,7 @@ public class ConsumerNetworkClient implements Closeable {
     }
 
     /**
-     * Poll for any network IO.
+     * 轮询任何网络IO。
      * @param timer Timer bounding how long this method can block
      * @param pollCondition Nullable blocking condition
      */
@@ -239,22 +234,21 @@ public class ConsumerNetworkClient implements Closeable {
      * @param disableWakeup If TRUE disable triggering wake-ups
      */
     public void poll(Timer timer, PollCondition pollCondition, boolean disableWakeup) {
-        // there may be handlers which need to be invoked if we woke up the previous call to poll
+        // 如果唤醒之前对poll的调用，可能需要调用一些处理程序
         firePendingCompletedRequests();
 
         lock.lock();
         try {
-            // Handle async disconnects prior to attempting any sends
+            // 在尝试任何发送之前处理异步断开连接
             handlePendingDisconnects();
 
-            // send all the requests we can send now
+            // 把我们现在能发的请求都发了
             long pollDelayMs = trySend(timer.currentTimeMs());
 
-            // check whether the poll is still needed by the caller. Note that if the expected completion
-            // condition becomes satisfied after the call to shouldBlock() (because of a fired completion
-            // handler), the client will be woken up.
+            // 检查调用方是否仍然需要轮询。注意，如果在调用shouldBlock()之后满足了预期的完成条件(因为触发了完成处理程序)，
+            // 客户端将被唤醒。
             if (pendingCompletion.isEmpty() && (pollCondition == null || pollCondition.shouldBlock())) {
-                // if there are no requests in flight, do not block longer than the retry backoff
+                // 如果没有正在执行的请求，则不要阻塞超过重试回退时间
                 long pollTimeout = Math.min(timer.remainingMs(), pollDelayMs);
                 if (client.inFlightRequestCount() == 0)
                     pollTimeout = Math.min(pollTimeout, retryBackoffMs);
@@ -264,32 +258,29 @@ public class ConsumerNetworkClient implements Closeable {
             }
             timer.update();
 
-            // handle any disconnects by failing the active requests. note that disconnects must
-            // be checked immediately following poll since any subsequent call to client.ready()
-            // will reset the disconnect status
+            // 通过失败活动请求来处理任何断开连接。注意，在poll之后必须立即检查断开连接，
+            // 因为任何后续对client.ready()的调用都会重置断开连接状态
             checkDisconnects(timer.currentTimeMs());
             if (!disableWakeup) {
-                // trigger wakeups after checking for disconnects so that the callbacks will be ready
-                // to be fired on the next call to poll()
+                // 在检查断开连接后触发唤醒，以便回调准备好在下次调用poll()时触发。
                 maybeTriggerWakeup();
             }
-            // throw InterruptException if this thread is interrupted
+            // 如果线程被中断，抛出InterruptException
             maybeThrowInterruptException();
 
-            // try again to send requests since buffer space may have been
-            // cleared or a connect finished in the poll
+            // 请再次尝试发送请求，因为缓冲区空间可能已被清除，或者连接已在轮询中完成
             trySend(timer.currentTimeMs());
 
-            // fail requests that couldn't be sent if they have expired
+            // 如果请求已过期，则无法发送的请求失败
             failExpiredRequests(timer.currentTimeMs());
 
-            // clean unsent requests collection to keep the map from growing indefinitely
+            // 清理未发送请求收集，以防止map无限增长
             unsent.clean();
         } finally {
             lock.unlock();
         }
 
-        // called without the lock to avoid deadlock potential if handlers need to acquire locks
+        // 如果处理程序需要获取锁，则在不带锁的情况下调用以避免可能发生死锁
         firePendingCompletedRequests();
 
         metadata.maybeThrowAnyException();
@@ -303,18 +294,16 @@ public class ConsumerNetworkClient implements Closeable {
     }
 
     /**
-     * Poll for network IO in best-effort only trying to transmit the ready-to-send request
-     * Do not check any pending requests or metadata errors so that no exception should ever
-     * be thrown, also no wakeups be triggered and no interrupted exception either.
+     * 尽最大努力轮询网络IO，只尝试传输准备发送的请求。不要检查任何挂起的请求或元数据错误，
+     * 这样就不会抛出异常，也不会触发唤醒，也不会中断异常。
      */
     public void transmitSends() {
         Timer timer = time.timer(0);
 
-        // do not try to handle any disconnects, prev request failures, metadata exception etc;
-        // just try once and return immediately
+        // 不要试图处理任何断开连接，预请求失败，元数据异常等;试一次，然后马上回来
         lock.lock();
         try {
-            // send all the requests we can send now
+            // 把我们现在能发的请求都发了
             trySend(timer.currentTimeMs());
 
             client.poll(0, timer.currentTimeMs());
@@ -324,7 +313,7 @@ public class ConsumerNetworkClient implements Closeable {
     }
 
     /**
-     * Block until all pending requests from the given node have finished.
+     * 阻塞，直到来自给定节点的所有挂起请求完成。
      * @param node The node to await requests from
      * @param timer Timer bounding how long this method can block
      * @return true If all requests finished, false if the timeout expired first
@@ -337,8 +326,7 @@ public class ConsumerNetworkClient implements Closeable {
     }
 
     /**
-     * Get the count of pending requests to the given node. This includes both request that
-     * have been transmitted (i.e. in-flight requests) and those which are awaiting transmission.
+     * 获取对给定节点的挂起请求的计数。这既包括已传输的请求(即飞行中的请求)，也包括正在等待传输的请求。
      * @param node The node in question
      * @return The number of pending requests
      */
@@ -352,8 +340,7 @@ public class ConsumerNetworkClient implements Closeable {
     }
 
     /**
-     * Check whether there is pending request to the given node. This includes both request that
-     * have been transmitted (i.e. in-flight requests) and those which are awaiting transmission.
+     * 检查是否有对给定节点的待处理请求。这既包括已传输的请求(即飞行中的请求)，也包括正在等待传输的请求。
      * @param node The node in question
      * @return A boolean indicating whether there is pending request
      */
@@ -369,8 +356,7 @@ public class ConsumerNetworkClient implements Closeable {
     }
 
     /**
-     * Get the total count of pending requests from all nodes. This includes both requests that
-     * have been transmitted (i.e. in-flight requests) and those which are awaiting transmission.
+     * 获取来自所有节点的待挂请求总数。这包括已经传输的请求(即正在传输的请求)和正在等待传输的请求。
      * @return The total count of pending requests
      */
     public int pendingRequestCount() {
@@ -383,8 +369,7 @@ public class ConsumerNetworkClient implements Closeable {
     }
 
     /**
-     * Check whether there is pending request. This includes both requests that
-     * have been transmitted (i.e. in-flight requests) and those which are awaiting transmission.
+     * 检查是否有待处理的请求。这包括已经传输的请求(即正在传输的请求)和正在等待传输的请求。
      * @return A boolean indicating whether there is pending request
      */
     public boolean hasPendingRequests() {
@@ -409,20 +394,17 @@ public class ConsumerNetworkClient implements Closeable {
             completedRequestsFired = true;
         }
 
-        // wakeup the client in case it is blocking in poll for this future's completion
+        // 唤醒客户端，以防它在轮询中阻塞，等待未来的完成
         if (completedRequestsFired)
             client.wakeup();
     }
 
     private void checkDisconnects(long now) {
-        // any disconnects affecting requests that have already been transmitted will be handled
-        // by NetworkClient, so we just need to check whether connections for any of the unsent
-        // requests have been disconnected; if they have, then we complete the corresponding future
-        // and set the disconnect flag in the ClientResponse
+        // 任何影响已发送请求的断开连接都将由NetworkClient处理，因此我们只需要检查未发送请求的连接是否已断开;
+        // 如果有，那么我们完成相应的future并在ClientResponse中设置disconnect标志
         for (Node node : unsent.nodes()) {
             if (client.connectionFailed(node)) {
-                // Remove entry before invoking request callback to avoid callbacks handling
-                // coordinator failures traversing the unsent list again.
+                // 在调用请求回调之前删除条目，以避免回调处理协调器失败，再次遍历未发送列表。
                 Collection<ClientRequest> requests = unsent.remove(node);
                 for (ClientRequest request : requests) {
                     RequestFutureCompletionHandler handler = (RequestFutureCompletionHandler) request.callback();
@@ -457,7 +439,7 @@ public class ConsumerNetworkClient implements Closeable {
     }
 
     private void failExpiredRequests(long now) {
-        // clear all expired unsent requests and fail their corresponding futures
+        // 清除所有过期的未发送请求并使其相应的未来失败
         Collection<ClientRequest> expiredRequests = unsent.removeExpiredRequests(now);
         for (ClientRequest request : expiredRequests) {
             RequestFutureCompletionHandler handler = (RequestFutureCompletionHandler) request.callback();
@@ -466,7 +448,7 @@ public class ConsumerNetworkClient implements Closeable {
     }
 
     private void failUnsentRequests(Node node, RuntimeException e) {
-        // clear unsent requests to node and fail their corresponding futures
+        // 清除未发送到节点的请求并使其相应的未来失败
         lock.lock();
         try {
             Collection<ClientRequest> unsentRequests = unsent.remove(node);
@@ -483,7 +465,7 @@ public class ConsumerNetworkClient implements Closeable {
     long trySend(long now) {
         long pollDelayMs = maxPollTimeoutMs;
 
-        // send any requests that can be sent now
+        // 发送任何现在可以发送的请求
         for (Node node : unsent.nodes()) {
             Iterator<ClientRequest> iterator = unsent.requestIterator(node);
             if (iterator.hasNext())
@@ -495,7 +477,7 @@ public class ConsumerNetworkClient implements Closeable {
                     client.send(request, now);
                     iterator.remove();
                 } else {
-                    // try next node when current node is not ready
+                    // 当当前节点未准备好时，尝试下一个节点
                     break;
                 }
             }
@@ -533,8 +515,7 @@ public class ConsumerNetworkClient implements Closeable {
 
 
     /**
-     * Check if the code is disconnected and unavailable for immediate reconnection (i.e. if it is in
-     * reconnect backoff window following the disconnect).
+     * 检查代码是否断开连接并且无法立即重新连接(即，断开连接后是否在重新连接回退窗口中)。
      */
     public boolean isUnavailable(Node node) {
         lock.lock();
@@ -546,7 +527,7 @@ public class ConsumerNetworkClient implements Closeable {
     }
 
     /**
-     * Check for an authentication error on a given node and raise the exception if there is one.
+     * 检查给定节点上的身份验证错误，如果有，则引发异常。
      */
     public void maybeThrowAuthFailure(Node node) {
         lock.lock();
@@ -560,9 +541,8 @@ public class ConsumerNetworkClient implements Closeable {
     }
 
     /**
-     * Initiate a connection if currently possible. This is only really useful for resetting the failed
-     * status of a socket. If there is an actual request to send, then {@link #send(Node, AbstractRequest.Builder)}
-     * should be used.
+     * 如果当前可能，启动一个连接。这只对重置套接字的失败状态有用。如果有实际的请求要发送，那么
+     * {@link #send(Node, AbstractRequest.Builder)} 应该使用。
      * @param node The node to connect to
      */
     public void tryConnect(Node node) {
@@ -612,12 +592,10 @@ public class ConsumerNetworkClient implements Closeable {
     }
 
     /**
-     * When invoking poll from a multi-threaded environment, it is possible that the condition that
-     * the caller is awaiting has already been satisfied prior to the invocation of poll. We therefore
-     * introduce this interface to push the condition checking as close as possible to the invocation
-     * of poll. In particular, the check will be done while holding the lock used to protect concurrent
-     * access to {@link org.apache.kafka.clients.NetworkClient}, which means implementations must be
-     * very careful about locking order if the callback must acquire additional locks.
+     * 当从多线程环境中调用poll时，调用者等待的条件可能在调用poll之前已经满足。
+     * 因此，我们引入这个接口来尽可能地将条件检查推到poll调用的附近。特别是，
+     * 检查将在持有用于保护并发访问的锁时完成 {@link org.apache.kafka.clients.NetworkClient},
+     * 这意味着如果回调必须获得额外的锁，则实现必须非常小心锁定顺序。
      */
     public interface PollCondition {
         /**
@@ -628,7 +606,7 @@ public class ConsumerNetworkClient implements Closeable {
     }
 
     /*
-     * A thread-safe helper class to hold requests per node that have not been sent yet
+     * 一个线程安全的helper类，用于保存尚未发送的每个节点的请求
      */
     private static final class UnsentRequests {
         private final ConcurrentMap<Node, ConcurrentLinkedQueue<ClientRequest>> unsent;
@@ -638,7 +616,7 @@ public class ConsumerNetworkClient implements Closeable {
         }
 
         public void put(Node node, ClientRequest request) {
-            // the lock protects the put from a concurrent removal of the queue for the node
+            // 锁可以防止并发删除节点的队列
             synchronized (unsent) {
                 ConcurrentLinkedQueue<ClientRequest> requests = unsent.computeIfAbsent(node, key -> new ConcurrentLinkedQueue<>());
                 requests.add(request);
@@ -687,8 +665,7 @@ public class ConsumerNetworkClient implements Closeable {
         }
 
         public void clean() {
-            // the lock protects removal from a concurrent put which could otherwise mutate the
-            // queue after it has been removed from the map
+            // 锁保护从并发放操作中删除，否则在从映射中删除队列后可能会改变队列
             synchronized (unsent) {
                 Iterator<ConcurrentLinkedQueue<ClientRequest>> iterator = unsent.values().iterator();
                 while (iterator.hasNext()) {
@@ -700,8 +677,7 @@ public class ConsumerNetworkClient implements Closeable {
         }
 
         public Collection<ClientRequest> remove(Node node) {
-            // the lock protects removal from a concurrent put which could otherwise mutate the
-            // queue after it has been removed from the map
+            // 锁保护从并发放操作中删除，否则在从映射中删除队列后可能会改变队列
             synchronized (unsent) {
                 ConcurrentLinkedQueue<ClientRequest> requests = unsent.remove(node);
                 return requests == null ? Collections.<ClientRequest>emptyList() : requests;

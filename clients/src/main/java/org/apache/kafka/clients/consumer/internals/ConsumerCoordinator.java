@@ -85,7 +85,7 @@ import static org.apache.kafka.clients.consumer.ConsumerConfig.ASSIGN_FROM_SUBSC
 import static org.apache.kafka.clients.consumer.CooperativeStickyAssignor.COOPERATIVE_STICKY_ASSIGNOR_NAME;
 
 /**
- * This class manages the coordination process with the consumer coordinator.
+ * 该类管理与消费者协调器的协调过程。
  */
 public final class ConsumerCoordinator extends AbstractCoordinator {
     private final GroupRebalanceConfig rebalanceConfig;
@@ -179,12 +179,10 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
         if (autoCommitEnabled)
             this.nextAutoCommitTimer = time.timer(autoCommitIntervalMs);
 
-        // select the rebalance protocol such that:
-        //   1. only consider protocols that are supported by all the assignors. If there is no common protocols supported
-        //      across all the assignors, throw an exception.
-        //   2. if there are multiple protocols that are commonly supported, select the one with the highest id (i.e. the
-        //      id number indicates how advanced the protocol is).
-        // we know there are at least one assignor in the list, no need to double check for NPE
+        // 选择的rebalance协议如下:
+        // 1.单击“下一步”。只考虑所有赋值器都支持的协议。如果没有跨所有赋值器支持的公共协议，则抛出异常。
+        // 2. 如果通常支持多个协议，则选择id最高的协议(即id号表示该协议的高级程度)。
+        // 我们知道列表中至少有一个赋值者，不需要再检查NPE
         if (!assignors.isEmpty()) {
             List<RebalanceProtocol> supportedProtocols = new ArrayList<>(assignors.get(0).supportedProtocols());
 
@@ -251,12 +249,11 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
 
     private void maybeUpdateJoinedSubscription(Set<TopicPartition> assignedPartitions) {
         if (subscriptions.hasPatternSubscription()) {
-            // Check if the assignment contains some topics that were not in the original
-            // subscription, if yes we will obey what leader has decided and add these topics
-            // into the subscriptions as long as they still match the subscribed pattern
+            // 检查分配是否包含一些原始订阅中没有的主题，如果是，我们将遵循领导者的决定并将这些主题添加到订阅中，
+            // 只要它们仍然符合订阅模式
 
             Set<String> addedTopics = new HashSet<>();
-            // this is a copy because its handed to listener below
+            // 这是一个副本，因为它交给下面的听众
             for (TopicPartition tp : assignedPartitions) {
                 if (!joinedSubscription.contains(tp.topic()))
                     addedTopics.add(tp.topic());
@@ -351,7 +348,7 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
                                   ByteBuffer assignmentBuffer) {
         log.debug("Executing onJoinComplete with generation {} and memberId {}", generation, memberId);
 
-        // Only the leader is responsible for monitoring for metadata changes (i.e. partition changes)
+        // 只有leader负责监控元数据变化(即分区变化)
         if (!isLeader)
             assignmentSnapshot = null;
 
@@ -359,12 +356,12 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
         if (assignor == null)
             throw new IllegalStateException("Coordinator selected invalid assignment protocol: " + assignmentStrategy);
 
-        // Give the assignor a chance to update internal state based on the received assignment
+        // 让赋值者有机会根据收到的赋值更新内部状态
         groupMetadata = new ConsumerGroupMetadata(rebalanceConfig.groupId, generation, memberId, rebalanceConfig.groupInstanceId);
 
         Set<TopicPartition> ownedPartitions = new HashSet<>(subscriptions.assignedPartitions());
 
-        // should at least encode the short version
+        // 至少应该对简短版本进行编码吗
         if (assignmentBuffer.remaining() < 2)
             throw new IllegalStateException("There are insufficient bytes available to read assignment from the sync-group response (" +
                 "actual byte size " + assignmentBuffer.remaining() + ") , this is not expected; " +
@@ -404,32 +401,29 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
             );
 
             if (!revokedPartitions.isEmpty()) {
-                // Revoke partitions that were previously owned but no longer assigned;
-                // note that we should only change the assignment (or update the assignor's state)
-                // AFTER we've triggered  the revoke callback
+                // 撤销以前拥有但不再分配的分区;注意，我们应该只在触发revoke回调后才更改赋值(或更新赋值者的状态)
                 firstException.compareAndSet(null, invokePartitionsRevoked(revokedPartitions));
 
-                // If revoked any partitions, need to re-join the group afterwards
+                // 如果撤销了任何分区，则需要随后重新加入组
                 final String reason = String.format("need to revoke partitions %s as indicated " +
                         "by the current assignment and re-join", revokedPartitions);
                 requestRejoin(reason);
             }
         }
 
-        // The leader may have assigned partitions which match our subscription pattern, but which
-        // were not explicitly requested, so we update the joined subscription here.
+        // leader可能已经分配了与订阅模式匹配的分区，但是没有显式请求，因此我们在这里更新已加入的订阅。
         maybeUpdateJoinedSubscription(assignedPartitions);
 
-        // Catch any exception here to make sure we could complete the user callback.
+        // 捕获这里的任何异常，以确保我们可以完成用户回调。
         firstException.compareAndSet(null, invokeOnAssignment(assignor, assignment));
 
-        // Reschedule the auto commit starting from now
+        // 从现在开始重新安排自动提交
         if (autoCommitEnabled)
             this.nextAutoCommitTimer.updateAndReset(autoCommitIntervalMs);
 
         subscriptions.assignFromSubscribed(assignedPartitions);
 
-        // Add partitions that were not previously owned but are now assigned
+        // 添加以前不拥有但现在已分配的分区
         firstException.compareAndSet(null, invokePartitionsAssigned(addedPartitions));
 
         if (firstException.get() != null) {
@@ -449,18 +443,16 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
             if (subscriptions.hasPatternSubscription())
                 updatePatternSubscription(cluster);
 
-            // Update the current snapshot, which will be used to check for subscription
-            // changes that would require a rebalance (e.g. new partitions).
+            // 更新当前快照，它将用于检查需要重新平衡的订阅更改(例如新分区)。
             metadataSnapshot = new MetadataSnapshot(subscriptions, cluster, version);
         }
     }
 
     /**
-     * Poll for coordinator events. This ensures that the coordinator is known and that the consumer
-     * has joined the group (if it is using group management). This also handles periodic offset commits
-     * if they are enabled.
+     * 轮询协调器事件。这确保了协调器是已知的，并且消费者已经加入了组(如果它正在使用组管理)。
+     * 如果启用了定期偏移量提交，则还可以处理这些提交。
      * <p>
-     * Returns early if the timeout expires or if waiting on rejoin is not required
+     * 如果超时过期或不需要等待重新连接，则提前返回
      *
      * @param timer Timer bounding how long this method can block
      * @param waitForJoinGroup Boolean flag indicating if we should wait until re-join group completes
@@ -477,25 +469,19 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
                 throw new IllegalStateException("User configured " + ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG +
                     " to empty while trying to subscribe for group protocol to auto assign partitions");
             }
-            // Always update the heartbeat last poll time so that the heartbeat thread does not leave the
-            // group proactively due to application inactivity even if (say) the coordinator cannot be found.
+            // 始终更新心跳最后一次轮询时间，这样即使(例如)找不到协调器，心跳线程也不会由于应用程序不活动而主动离开组。
             pollHeartbeat(timer.currentTimeMs());
             if (coordinatorUnknown() && !ensureCoordinatorReady(timer)) {
                 return false;
             }
 
             if (rejoinNeededOrPending()) {
-                // due to a race condition between the initial metadata fetch and the initial rebalance,
-                // we need to ensure that the metadata is fresh before joining initially. This ensures
-                // that we have matched the pattern against the cluster's topics at least once before joining.
+                // 由于初始元数据获取和初始再平衡之间存在竞争条件，我们需要确保元数据在初始连接之前是新鲜的。
+                // 这确保了我们在加入之前至少针对集群的主题匹配了一次模式。
                 if (subscriptions.hasPatternSubscription()) {
-                    // For consumer group that uses pattern-based subscription, after a topic is created,
-                    // any consumer that discovers the topic after metadata refresh can trigger rebalance
-                    // across the entire consumer group. Multiple rebalances can be triggered after one topic
-                    // creation if consumers refresh metadata at vastly different times. We can significantly
-                    // reduce the number of rebalances caused by single topic creation by asking consumer to
-                    // refresh metadata before re-joining the group as long as the refresh backoff time has
-                    // passed.
+                    // 对于使用基于模式订阅的消费者组，在创建主题后，任何在元数据刷新后发现主题的消费者都可以触发整个消费者组的再平衡。
+                    // 如果消费者在非常不同的时间刷新元数据，则可以在创建一个主题之后触发多个重新平衡。只要刷新回退时间过了，
+                    // 我们就可以要求消费者在重新加入组之前刷新元数据，从而显著减少由单个主题创建引起的重新平衡次数。
                     if (this.metadata.timeToAllowUpdate(timer.currentTimeMs()) == 0) {
                         this.metadata.requestUpdate();
                     }
@@ -507,23 +493,19 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
                     maybeUpdateSubscriptionMetadata();
                 }
 
-                // if not wait for join group, we would just use a timer of 0
+                // 如果不等待join group，我们将使用0的计时器
                 if (!ensureActiveGroup(waitForJoinGroup ? timer : time.timer(0L))) {
-                    // since we may use a different timer in the callee, we'd still need
-                    // to update the original timer's current time after the call
+                    // 因为我们可以在被调用者中使用不同的计时器，我们仍然需要在调用后更新原始计时器的当前时间
                     timer.update(time.milliseconds());
 
                     return false;
                 }
             }
         } else {
-            // For manually assigned partitions, if there are no ready nodes, await metadata.
-            // If connections to all nodes fail, wakeups triggered while attempting to send fetch
-            // requests result in polls returning immediately, causing a tight loop of polls. Without
-            // the wakeup, poll() with no channels would block for the timeout, delaying re-connection.
-            // awaitMetadataUpdate() initiates new connections with configured backoff and avoids the busy loop.
-            // When group management is used, metadata wait is already performed for this scenario as
-            // coordinator is unknown, hence this check is not required.
+            // 对于手动分配的分区，如果没有现成的节点，则等待元数据。如果到所有节点的连接失败，则在尝试发送获取请求时触发的唤醒将导致轮询立即返回，
+            // 从而导致轮询的紧密循环。如果没有唤醒，没有通道的poll()将阻塞超时，延迟重新连接。
+            // awaitmetadatupdate()通过配置回退启动新连接，并避免繁忙循环。当使用组管理时，由于协调器未知，
+            // 此场景已经执行元数据等待，因此不需要此检查。
             if (metadata.updateRequested() && !client.hasReadyNodes(timer.currentTimeMs())) {
                 client.awaitMetadataUpdate(timer);
             }
@@ -534,7 +516,7 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
     }
 
     /**
-     * Return the time to the next needed invocation of {@link ConsumerNetworkClient#poll(Timer)}.
+     * 下一个所需调用的时间 {@link ConsumerNetworkClient#poll(Timer)}.
      * @param now current time in milliseconds
      * @return the maximum time in milliseconds the caller should wait before the next invocation of poll()
      */
@@ -546,13 +528,11 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
     }
 
     private void updateGroupSubscription(Set<String> topics) {
-        // the leader will begin watching for changes to any of the topics the group is interested in,
-        // which ensures that all metadata changes will eventually be seen
+        // 领导者将开始关注小组感兴趣的任何主题的变化，这确保最终会看到所有元数据的变化
         if (this.subscriptions.groupSubscribe(topics))
             metadata.requestUpdateForNewTopics();
 
-        // update metadata (if needed) and keep track of the metadata used for assignment so that
-        // we can check after rebalance completion whether anything has changed
+        // 更新元数据(如果需要)并跟踪用于分配的元数据，以便我们可以在重新平衡完成后检查是否有任何更改
         if (!client.ensureFreshMetadata(time.timer(Long.MAX_VALUE)))
             throw new TimeoutException();
 
@@ -564,15 +544,12 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
     }
 
     /**
-     * user-customized assignor may have created some topics that are not in the subscription list
-     * and assign their partitions to the members; in this case we would like to update the leader's
-     * own metadata with the newly added topics so that it will not trigger a subsequent rebalance
-     * when these topics gets updated from metadata refresh.
+     * 用户自定义分配器可能已经创建了一些不在订阅列表中的主题，并将其分区分配给成员;在这种情况下，
+     * 我们希望使用新添加的主题更新领导者自己的元数据，以便在从元数据刷新更新这些主题时不会触发后续的再平衡。
+     * 我们跳过对产品内分配的检查，因为这不会发生在产品内分配中。
      *
-     * We skip the check for in-product assignors since this will not happen in in-product assignors.
-     *
-     * TODO: this is a hack and not something we want to support long-term unless we push regex into the protocol
-     *       we may need to modify the ConsumerPartitionAssignor API to better support this case.
+     * TODO: 这是一个hack，并不是我们想要长期支持的东西，除非我们将regex推入协议中。
+     *  我们可能需要修改ConsumerPartitionAssignor API来更好地支持这种情况。
      *
      * @param assignorName          the selected assignor name
      * @param assignments           the assignments after assignor assigned
@@ -618,7 +595,7 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
         Set<String> allSubscribedTopics = new HashSet<>();
         Map<String, Subscription> subscriptions = new HashMap<>();
 
-        // collect all the owned partitions
+        // 收集所有拥有的分区
         Map<String, List<TopicPartition>> ownedPartitions = new HashMap<>();
 
         for (JoinGroupResponseData.JoinGroupResponseMember memberSubscription : allSubscriptions) {
@@ -629,8 +606,7 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
             ownedPartitions.put(memberSubscription.memberId(), subscription.ownedPartitions());
         }
 
-        // the leader will begin watching for changes to any of the topics the group is interested in,
-        // which ensures that all metadata changes will eventually be seen
+        // 领导者将开始关注小组感兴趣的任何主题的变化，这确保最终会看到所有元数据的变化
         updateGroupSubscription(allSubscribedTopics);
 
         isLeader = true;
@@ -639,8 +615,7 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
 
         Map<String, Assignment> assignments = assignor.assign(metadata.fetch(), new GroupSubscription(subscriptions)).groupAssignment();
 
-        // skip the validation for built-in cooperative sticky assignor since we've considered
-        // the "generation" of ownedPartition inside the assignor
+        // 跳过内置协作sticky赋值器的验证，因为我们已经考虑了ownedPartition在赋值器内部的“生成”
         if (protocol == RebalanceProtocol.COOPERATIVE && !assignorName.equals(COOPERATIVE_STICKY_ASSIGNOR_NAME)) {
             validateCooperativeAssignment(ownedPartitions, assignments);
         }
@@ -661,12 +636,10 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
     }
 
     /**
-     * Used by COOPERATIVE rebalance protocol only.
+     * 仅供COOPERATIVE rebalance协议使用。验证分配器返回的分配，这样就不会将所有的分区直接重新分配给不同的消费者:
+     * 如果分配器想要重新分配一个已拥有的分区，它必须首先将其从当前所有者的新分配中删除，这样它就不会分配给任何成员，
+     * 然后在下一次重新平衡中，它可以最终将那些不属于任何人的分区重新分配给消费者。
      *
-     * Validate the assignments returned by the assignor such that no owned partitions are going to
-     * be reassigned to a different consumer directly: if the assignor wants to reassign an owned partition,
-     * it must first remove it from the new assignment of the current owner so that it is not assigned to any
-     * member, and then in the next rebalance it can finally reassign those partitions not owned by anyone to consumers.
      */
     private void validateCooperativeAssignment(final Map<String, List<TopicPartition>> ownedPartitions,
                                                final Map<String, Assignment> assignments) {
@@ -683,8 +656,7 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
             totalRevokedPartitions.addAll(revokedPartitions);
         }
 
-        // if there are overlap between revoked partitions and added partitions, it means some partitions
-        // immediately gets re-assigned to another member while it is still claimed by some member
+        // 如果在被撤销的分区和添加的分区之间存在重叠，这意味着一些分区立即被重新分配给另一个成员，而某些成员仍然声称它
         totalAddedPartitions.retainAll(totalRevokedPartitions);
         if (!totalAddedPartitions.isEmpty()) {
             log.error("With the COOPERATIVE protocol, owned partitions cannot be " +
@@ -698,15 +670,12 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
     @Override
     protected void onJoinPrepare(int generation, String memberId) {
         log.debug("Executing onJoinPrepare with generation {} and memberId {}", generation, memberId);
-        // commit offsets prior to rebalance if auto-commit enabled
+        // 如果启用了自动提交，则在重新平衡之前提交偏移量
         maybeAutoCommitOffsetsSync(time.timer(rebalanceConfig.rebalanceTimeoutMs));
 
-        // the generation / member-id can possibly be reset by the heartbeat thread
-        // upon getting errors or heartbeat timeouts; in this case whatever is previously
-        // owned partitions would be lost, we should trigger the callback and cleanup the assignment;
-        // otherwise we can proceed normally and revoke the partitions depending on the protocol,
-        // and in that case we should only change the assignment AFTER the revoke callback is triggered
-        // so that users can still access the previously owned partitions to commit offsets etc.
+        // 生成成员id可以在获得错误或心跳超时时由心跳线程重置;在这种情况下，任何先前拥有的分区都将丢失，
+        // 我们应该触发回调并清理分配;否则，我们可以根据协议正常进行并撤销分区，在这种情况下，
+        // 我们应该只在revoke回调触发后更改分配，以便用户仍然可以访问以前拥有的分区以提交偏移量等。
         Exception exception = null;
         final Set<TopicPartition> revokedPartitions;
         if (generation == Generation.NO_GENERATION.generationId &&
@@ -723,7 +692,7 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
         } else {
             switch (protocol) {
                 case EAGER:
-                    // revoke all partitions
+                    // 撤销所有分区
                     revokedPartitions = new HashSet<>(subscriptions.assignedPartitions());
                     exception = invokePartitionsRevoked(revokedPartitions);
 
@@ -732,7 +701,7 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
                     break;
 
                 case COOPERATIVE:
-                    // only revoke those partitions that are not in the subscription any more.
+                    // 只撤销那些不再属于订阅的分区。
                     Set<TopicPartition> ownedPartitions = new HashSet<>(subscriptions.assignedPartitions());
                     revokedPartitions = ownedPartitions.stream()
                         .filter(tp -> !subscriptions.subscription().contains(tp.topic()))
@@ -759,13 +728,13 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
 
     @Override
     public void onLeavePrepare() {
-        // Save the current Generation and use that to get the memberId, as the hb thread can change it at any time
+        // 保存当前的Generation并使用它来获取memberId，因为hb线程可以随时更改它
         final Generation currentGeneration = generation();
         final String memberId = currentGeneration.memberId;
 
         log.debug("Executing onLeavePrepare with generation {} and memberId {}", currentGeneration, memberId);
 
-        // we should reset assignment and trigger the callback before leaving group
+        // 我们应该在离开组之前重置赋值并触发回调
         Set<TopicPartition> droppedPartitions = new HashSet<>(subscriptions.assignedPartitions());
 
         if (subscriptions.hasAutoAssignedPartitions() && !droppedPartitions.isEmpty()) {
@@ -813,7 +782,7 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
     }
 
     /**
-     * Refresh the committed offsets for provided partitions.
+     * 刷新所提供分区的提交偏移量。
      *
      * @param timer Timer bounding how long this method can block
      * @return true iff the operation completed within the timeout
@@ -828,11 +797,10 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
             final TopicPartition tp = entry.getKey();
             final OffsetAndMetadata offsetAndMetadata = entry.getValue();
             if (offsetAndMetadata != null) {
-                // first update the epoch if necessary
+                // 如果需要，首先更新epoch
                 entry.getValue().leaderEpoch().ifPresent(epoch -> this.metadata.updateLastSeenEpochIfNewer(entry.getKey(), epoch));
 
-                // it's possible that the partition is no longer assigned when the response is received,
-                // so we need to ignore seeking if that's the case
+                // 有可能在收到响应时不再分配分区，因此如果是这种情况，我们需要忽略查找
                 if (this.subscriptions.isAssigned(tp)) {
                     final ConsumerMetadata.LeaderAndEpoch leaderAndEpoch = metadata.currentLeader(tp);
                     final SubscriptionState.FetchPosition position = new SubscriptionState.FetchPosition(
@@ -852,7 +820,7 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
     }
 
     /**
-     * Fetch the current committed offsets from the coordinator for a set of partitions.
+     * 从一组分区的协调器中获取当前提交的偏移量。
      *
      * @param partitions The partitions to fetch offsets for
      * @return A map from partition to the committed offset or null if the operation timed out
@@ -864,14 +832,14 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
         final Generation generationForOffsetRequest = generationIfStable();
         if (pendingCommittedOffsetRequest != null &&
             !pendingCommittedOffsetRequest.sameRequest(partitions, generationForOffsetRequest)) {
-            // if we were waiting for a different request, then just clear it.
+            // 如果我们在等另一个请求，那就清空它。
             pendingCommittedOffsetRequest = null;
         }
 
         do {
             if (!ensureCoordinatorReady(timer)) return null;
 
-            // contact coordinator to fetch committed offsets
+            // 联系协调器获取承诺的补偿量
             final RequestFuture<Map<TopicPartition, OffsetAndMetadata>> future;
             if (pendingCommittedOffsetRequest != null) {
                 future = pendingCommittedOffsetRequest.response;
@@ -899,7 +867,7 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
     }
 
     /**
-     * Return the consumer group metadata.
+     * 返回消费者组元数据。
      *
      * @return the current consumer group metadata
      */
@@ -911,7 +879,7 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
      * @throws KafkaException if the rebalance callback throws exception
      */
     public void close(final Timer timer) {
-        // we do not need to re-enable wakeups since we are closing already
+        // 我们不需要重新启用唤醒，因为我们已经关闭了
         client.disableWakeups();
         try {
             maybeAutoCommitOffsetsSync(timer);
@@ -947,12 +915,9 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
         if (!coordinatorUnknown()) {
             doCommitOffsetsAsync(offsets, callback);
         } else {
-            // we don't know the current coordinator, so try to find it and then send the commit
-            // or fail (we don't want recursive retries which can cause offset commits to arrive
-            // out of order). Note that there may be multiple offset commits chained to the same
-            // coordinator lookup request. This is fine because the listeners will be invoked in
-            // the same order that they were added. Note also that AbstractCoordinator prevents
-            // multiple concurrent coordinator lookup requests.
+            // 我们不知道当前的协调器，所以试着找到它，然后发送提交或失败(我们不希望递归重试，这会导致偏移提交无序到达)。
+            // 注意，可能有多个偏移提交链接到同一个协调器查找请求。这很好，因为侦听器将按照添加它们的顺序调用。
+            // 还要注意，AbstractCoordinator防止多个并发协调器查找请求。
             pendingAsyncCommits.incrementAndGet();
             lookupCoordinator().addListener(new RequestFutureListener<Void>() {
                 @Override
@@ -971,9 +936,7 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
             });
         }
 
-        // ensure the commit has a chance to be transmitted (without blocking on its completion).
-        // Note that commits are treated as heartbeats by the coordinator, so there is no need to
-        // explicitly allow heartbeats through delayed task execution.
+        // 确保提交有机会被传输(不阻塞其完成)。注意，提交被协调器视为心跳，因此不需要通过延迟的任务执行显式地允许心跳。
         client.pollNoWakeup();
     }
 
@@ -1004,8 +967,7 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
     }
 
     /**
-     * Commit offsets synchronously. This method will retry until the commit completes successfully
-     * or an unrecoverable error is encountered.
+     * 同步提交偏移量。此方法将重试，直到提交成功完成或遇到不可恢复的错误。
      * @param offsets The offsets to be committed
      * @throws org.apache.kafka.common.errors.AuthorizationException if the consumer is not authorized to the group
      *             or to any of the specified partitions. See the exception for more details
@@ -1028,9 +990,8 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
             RequestFuture<Void> future = sendOffsetCommitRequest(offsets);
             client.poll(future, timer);
 
-            // We may have had in-flight offset commits when the synchronous commit began. If so, ensure that
-            // the corresponding callbacks are invoked prior to returning in order to preserve the order that
-            // the offset commits were applied.
+            // 当同步提交开始时，我们可能已经进行了动态偏移提交。如果是这样，请确保在返回之前调用相应的回调，
+            // 以保持应用偏移量提交的顺序。
             invokeCompletedOffsetCommitCallbacks();
 
             if (future.succeeded()) {
@@ -1086,10 +1047,10 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
                     log.debug("Auto-commit of offsets {} timed out before completion", allConsumedOffsets);
             } catch (WakeupException | InterruptException e) {
                 log.debug("Auto-commit of offsets {} was interrupted before completion", allConsumedOffsets);
-                // rethrow wakeups since they are triggered by the user
+                // 重新抛出唤醒，因为它们是由用户触发的
                 throw e;
             } catch (Exception e) {
-                // consistent with async auto-commit failures, we do not propagate the exception
+                // 与异步自动提交失败一致，我们不传播异常
                 log.warn("Synchronous auto-commit of offsets {} failed: {}", allConsumedOffsets, e.getMessage());
             }
         }
@@ -1104,11 +1065,8 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
     }
 
     /**
-     * Commit offsets for the specified list of topics and partitions. This is a non-blocking call
-     * which returns a request future that can be polled in the case of a synchronous commit or ignored in the
-     * asynchronous case.
-     *
-     * NOTE: This is visible only for testing
+     * 提交指定主题和分区列表的偏移量。这是一个非阻塞调用，它返回一个请求未来，在同步提交的情况下可以轮询，
+     * 在异步提交的情况下可以忽略。
      *
      * @param offsets The list of offsets per partition that should be committed.
      * @return A request future whose value indicates whether the commit was successful or not
@@ -1121,7 +1079,7 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
         if (coordinator == null)
             return RequestFuture.coordinatorNotAvailable();
 
-        // create the offset commit request
+        // 创建偏移量提交请求
         Map<String, OffsetCommitRequestData.OffsetCommitRequestTopic> requestTopicDataMap = new HashMap<>();
         for (Map.Entry<TopicPartition, OffsetAndMetadata> entry : offsets.entrySet()) {
             TopicPartition topicPartition = entry.getKey();
@@ -1148,14 +1106,13 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
         final Generation generation;
         if (subscriptions.hasAutoAssignedPartitions()) {
             generation = generationIfStable();
-            // if the generation is null, we are not part of an active group (and we expect to be).
-            // the only thing we can do is fail the commit and let the user rejoin the group in poll().
+            // 如果生成为null，则我们不是活动组的一部分(我们希望是)。我们唯一能做的就是提交失败，让用户在poll()中重新加入组。
             if (generation == null) {
                 log.info("Failing OffsetCommit request since the consumer is not part of an active group");
 
                 if (rebalanceInProgress()) {
-                    // if the client knows it is already rebalancing, we can use RebalanceInProgressException instead of
-                    // CommitFailedException to indicate this is not a fatal error
+                    // 如果客户端知道它已经在重新平衡，我们可以使用RebalanceInProgressException而不是
+                    // CommitFailedException来指示这不是一个致命错误
                     return RequestFuture.failure(new RebalanceInProgressException("Offset commit cannot be completed since the " +
                         "consumer is undergoing a rebalance for auto partition assignment. You can try completing the rebalance " +
                         "by calling poll() and then retry the operation."));
@@ -1238,7 +1195,7 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
                         } else if (error == Errors.FENCED_INSTANCE_ID) {
                             log.info("OffsetCommit failed with {} due to group instance id {} fenced", sentGeneration, rebalanceConfig.groupInstanceId);
 
-                            // if the generation has changed or we are not in rebalancing, do not raise the fatal error but rebalance-in-progress
+                            // 如果这一代人发生了变化，或者我们没有处于再平衡阶段，那就不要抛出致命错误，而是在进行再平衡
                             if (generationUnchanged()) {
                                 future.raise(error);
                             } else {
@@ -1256,13 +1213,11 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
                             }
                             return;
                         } else if (error == Errors.REBALANCE_IN_PROGRESS) {
-                            /* Consumer should not try to commit offset in between join-group and sync-group,
-                             * and hence on broker-side it is not expected to see a commit offset request
-                             * during CompletingRebalance phase; if it ever happens then broker would return
-                             * this error to indicate that we are still in the middle of a rebalance.
-                             * In this case we would throw a RebalanceInProgressException,
-                             * request re-join but do not reset generations. If the callers decide to retry they
-                             * can go ahead and call poll to finish up the rebalance first, and then try commit again.
+                            /* 消费者不应该尝试在join-group和sync-group之间提交偏移量，因此在代理端，
+                            不希望在CompletingRebalance阶段看到提交偏移量请求;如果发生这种情况，
+                            那么broker将返回此错误，以表明我们仍处于再平衡的中间。在这种情况下，
+                            我们将抛出RebalanceInProgressException，请求重新加入，
+                            但不重置代。如果调用者决定重试，他们可以继续并调用poll来完成重新平衡，然后再次尝试提交。
                              */
                             requestRejoin("offset commit failed since group is already rebalancing");
                             future.raise(new RebalanceInProgressException("Offset commit cannot be completed since the " +
@@ -1273,8 +1228,7 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
                                 || error == Errors.ILLEGAL_GENERATION) {
                             log.info("OffsetCommit failed with {}: {}", sentGeneration, error.message());
 
-                            // only need to reset generation and re-join group if generation has not changed or we are not in rebalancing;
-                            // otherwise only raise rebalance-in-progress error
+                            // 只需要重置代和重新加入组，如果代没有改变或我们没有在重新平衡;否则只会引发rebalance-in-progress错误
                             KafkaException exception;
                             synchronized (ConsumerCoordinator.this) {
                                 if (!generationUnchanged() && ConsumerCoordinator.this.state == MemberState.PREPARING_REBALANCE) {
@@ -1306,8 +1260,7 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
     }
 
     /**
-     * Fetch the committed offsets for a set of partitions. This is a non-blocking call. The
-     * returned future can be polled to get the actual offsets returned from the broker.
+     * 获取一组分区的已提交偏移量。这是一个非阻塞呼叫。可以轮询返回的未来以获得从代理返回的实际偏移量。
      *
      * @param partitions The set of partitions to get offsets for.
      * @return A request future containing the committed offsets.
@@ -1322,7 +1275,7 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
         OffsetFetchRequest.Builder requestBuilder =
             new OffsetFetchRequest.Builder(this.rebalanceConfig.groupId, true, new ArrayList<>(partitions), throwOnFetchStableOffsetsUnsupported);
 
-        // send the request with a callback
+        // 发送带有回调的请求
         return client.send(coordinator, requestBuilder)
                 .compose(new OffsetFetchResponseHandler());
     }
@@ -1339,10 +1292,8 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
                 log.debug("Offset fetch failed: {}", responseError.message());
 
                 if (responseError == Errors.COORDINATOR_LOAD_IN_PROGRESS) {
-                    // just retry
                     future.raise(responseError);
                 } else if (responseError == Errors.NOT_COORDINATOR) {
-                    // re-discover the coordinator and retry
                     markCoordinatorUnknown(responseError);
                     future.raise(responseError);
                 } else if (responseError == Errors.GROUP_AUTHORIZATION_FAILED) {
@@ -1381,8 +1332,7 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
                         return;
                     }
                 } else if (partitionData.offset >= 0) {
-                    // record the position with the offset (-1 indicates no committed offset to fetch);
-                    // if there's no committed offset, record as null
+                    // 用偏移量记录位置(-1表示没有提交的偏移量要获取);如果没有提交偏移量，则记录为空
                     offsets.put(tp, new OffsetAndMetadata(partitionData.offset, partitionData.leaderEpoch, partitionData.metadata));
                 } else {
                     log.info("Found no committed offset for partition {}", tp);

@@ -111,24 +111,22 @@ import java.util.stream.Collectors;
 import static java.util.Collections.emptyList;
 
 /**
- * This class manages the fetching process with the brokers.
+ * 该类通过代理管理获取过程。
  * <p>
- * Thread-safety:
- * Requests and responses of Fetcher may be processed by different threads since heartbeat
- * thread may process responses. Other operations are single-threaded and invoked only from
- * the thread polling the consumer.
+ * 线程安全:
+ *    Fetcher的请求和响应可以由不同的线程处理，因为心跳线程可以处理响应。其他操作是单线程的，只能从轮询使用者的线程调用。
  * <ul>
- *     <li>If a response handler accesses any shared state of the Fetcher (e.g. FetchSessionHandler),
- *     all access to that state must be synchronized on the Fetcher instance.</li>
- *     <li>If a response handler accesses any shared state of the coordinator (e.g. SubscriptionState),
- *     it is assumed that all access to that state is synchronized on the coordinator instance by
- *     the caller.</li>
- *     <li>Responses that collate partial responses from multiple brokers (e.g. to list offsets) are
- *     synchronized on the response future.</li>
- *     <li>At most one request is pending for each node at any time. Nodes with pending requests are
- *     tracked and updated after processing the response. This ensures that any state (e.g. epoch)
- *     updated while processing responses on one thread are visible while creating the subsequent request
- *     on a different thread.</li>
+ *     <li>
+ *         如果响应处理程序访问Fetcher的任何共享状态 (e.g. FetchSessionHandler),
+ *     对该状态的所有访问必须在Fetcher实例上同步。</li>
+ *     <li>
+ *         如果响应处理程序访问协调器的任何共享状态(例如SubscriptionState)，则假定调用者在协调器实例上同步了对该状态的所有访问。
+ *     </li>
+ *     <li>
+ *         整理来自多个代理的部分响应(例如列出偏移量)的响应将在响应未来同步。
+ *     </li>
+ *     <li>在任何时候，每个节点最多有一个请求挂起。处理响应后，将跟踪和更新具有挂起请求的节点。
+ *     这确保了在一个线程上处理响应时更新的任何状态(例如epoch)在另一个线程上创建后续请求时是可见的。</li>
  * </ul>
  */
 public class Fetcher<K, V> implements Closeable {
@@ -214,7 +212,7 @@ public class Fetcher<K, V> implements Closeable {
      */
     static class ListOffsetData {
         final long offset;
-        final Long timestamp; //  null if the broker does not support returning timestamps
+        final Long timestamp; //  如果代理不支持返回时间戳，则为空
         final Optional<Integer> leaderEpoch; // empty if the leader epoch is not known
 
         ListOffsetData(long offset, Long timestamp, Optional<Integer> leaderEpoch) {
@@ -343,7 +341,7 @@ public class Fetcher<K, V> implements Closeable {
     }
 
     /**
-     * Get topic metadata for all topics in the cluster
+     * 获取集群中所有主题的主题元数据
      * @param timer Timer bounding how long this method can block
      * @return The map of topics with their partition information
      */
@@ -352,14 +350,14 @@ public class Fetcher<K, V> implements Closeable {
     }
 
     /**
-     * Get metadata for all topics present in Kafka cluster
+     * 获取Kafka集群中所有主题的元数据
      *
      * @param request The MetadataRequest to send
      * @param timer Timer bounding how long this method can block
      * @return The map of topics with their partition information
      */
     public Map<String, List<PartitionInfo>> getTopicMetadata(MetadataRequest.Builder request, Timer timer) {
-        // Save the round trip if no topics are requested.
+        // 如果没有请求主题，则保存往返行程。
         if (!request.isAllTopics() && request.emptyTopicList())
             return Collections.emptyMap();
 
@@ -381,8 +379,7 @@ public class Fetcher<K, V> implements Closeable {
                 boolean shouldRetry = false;
                 Map<String, Errors> errors = response.errors();
                 if (!errors.isEmpty()) {
-                    // if there were errors, we need to check whether they were fatal or whether
-                    // we should just retry
+                    // 如果有错误，我们需要检查它们是否致命，或者我们是否应该重试
 
                     log.debug("Topic metadata fetch included errors: {}", errors);
 
@@ -419,7 +416,7 @@ public class Fetcher<K, V> implements Closeable {
     }
 
     /**
-     * Send Metadata Request to least loaded node in Kafka cluster asynchronously
+     * 向Kafka集群中负载最少的节点异步发送元数据请求
      * @return A future that indicates result of sent metadata request
      */
     private RequestFuture<ClientResponse> sendMetadataRequest(MetadataRequest.Builder request) {
@@ -450,10 +447,10 @@ public class Fetcher<K, V> implements Closeable {
     }
 
     /**
-     * Reset offsets for all assigned partitions that require it.
+     * 重置所有分配分区的偏移量。
      *
-     * @throws org.apache.kafka.clients.consumer.NoOffsetForPartitionException If no offset reset strategy is defined
-     *   and one or more partitions aren't awaiting a seekToBeginning() or seekToEnd().
+     * @throws org.apache.kafka.clients.consumer.NoOffsetForPartitionException 如果没有定义偏移重置策略，并且一个或多个分区没有等待
+     * seekToBeginning() or seekToEnd().
      */
     public void resetOffsetsIfNeeded() {
         // Raise exception from previous offset fetch if there is one
@@ -543,10 +540,8 @@ public class Fetcher<K, V> implements Closeable {
                         for (final Map.Entry<TopicPartition, ListOffsetData> entry: value.fetchedOffsets.entrySet()) {
                             final TopicPartition partition = entry.getKey();
 
-                            // if the interested partitions are part of the subscriptions, use the returned offset to update
-                            // the subscription state as well:
-                            //   * with read-committed, the returned offset would be LSO;
-                            //   * with read-uncommitted, the returned offset would be HW;
+                            // 如果感兴趣的分区是订阅的一部分，那么也使用返回的偏移量来更新订阅状态:对于read-committed，
+                            // 返回的偏移量将是LSO;对于read-uncommitted，返回的偏移量为HW;
                             if (subscriptions.isAssigned(partition)) {
                                 final long offset = entry.getValue().offset;
                                 if (isolationLevel == IsolationLevel.READ_COMMITTED) {
@@ -569,9 +564,8 @@ public class Fetcher<K, V> implements Closeable {
                 }
             });
 
-            // if timeout is set to zero, do not try to poll the network client at all
-            // and return empty immediately; otherwise try to get the results synchronously
-            // and throw timeout exception if cannot complete in time
+            // 如果timeout设置为0，不要尝试轮询网络客户端，并立即返回空;否则，尝试同步获取结果，
+            // 如果不能及时完成则抛出超时异常
             if (timer.timeoutMs() == 0L)
                 return result;
 
@@ -795,8 +789,8 @@ public class Fetcher<K, V> implements Closeable {
     }
 
     /**
-     * For each partition which needs validation, make an asynchronous request to get the end-offsets for the partition
-     * with the epoch less than or equal to the epoch the partition last saw.
+     * 对于每个需要验证的分区，发出一个异步请求，以获取该分区的结束偏移量，
+     * 该分区的epoch小于或等于该分区最后看到的epoch。
      *
      * Requests are grouped by Node for efficiency.
      */
@@ -841,12 +835,10 @@ public class Fetcher<K, V> implements Closeable {
                         metadata.requestUpdate();
                     }
 
-                    // For each OffsetsForLeader response, check if the end-offset is lower than our current offset
-                    // for the partition. If so, it means we have experienced log truncation and need to reposition
-                    // that partition's offset.
-                    //
-                    // In addition, check whether the returned offset and epoch are valid. If not, then we should reset
-                    // its offset if reset policy is configured, or throw out of range exception.
+                    // 对于每个OffsetsForLeader响应，检查结束偏移量是否低于分区的当前偏移量。
+                    // 如果是这样，则意味着我们经历了日志截断，需要重新定位该分区的偏移量。
+                    // 另外，检查返回的偏移量和epoch是否有效。如果不是，那么我们应该重置它的偏移量(如果配置了重置策略)，
+                    // 或者抛出超出范围的异常。
                     offsetsResult.endOffsets().forEach((topicPartition, respEndOffset) -> {
                         FetchPosition requestPosition = fetchPositions.get(topicPartition);
                         Optional<SubscriptionState.LogTruncation> truncationOpt =
@@ -891,7 +883,7 @@ public class Fetcher<K, V> implements Closeable {
     }
 
     /**
-     * Search the offsets by target times for the specified partitions.
+     * 按目标时间搜索指定分区的偏移量。
      *
      * @param timestampsToSearch the mapping between partitions and target time
      * @param requireTimestamps true if we should fail with an UnsupportedVersionException if the broker does
@@ -939,9 +931,8 @@ public class Fetcher<K, V> implements Closeable {
     }
 
     /**
-     * Groups timestamps to search by node for topic partitions in `timestampsToSearch` that have
-     * leaders available. Topic partitions from `timestampsToSearch` that do not have their leader
-     * available are added to `partitionsToRetry`
+     * 分组时间戳以按节点搜索' timestampsToSearch '中具有可用领导者的主题分区。从' timestampsToSearch '
+     * 中没有其leader可用的主题分区被添加到`partitionsToRetry`
      * @param timestampsToSearch The mapping from partitions ot the target timestamps
      * @param partitionsToRetry A set of topic partitions that will be extended with partitions
      *                          that need metadata update or re-connect to the leader.
@@ -964,9 +955,7 @@ public class Fetcher<K, V> implements Closeable {
                 if (client.isUnavailable(leader)) {
                     client.maybeThrowAuthFailure(leader);
 
-                    // The connection has failed and we need to await the backoff period before we can
-                    // try again. No need to request a metadata update since the disconnect will have
-                    // done so already.
+                    // 连接失败了，我们需要等待回退期才能再次尝试。不需要请求元数据更新，因为断开连接已经这样做了。
                     log.debug("Leader {} for partition {} is unavailable for fetching offset until reconnect backoff expires",
                             leader, tp);
                     partitionsToRetry.add(tp);
@@ -983,7 +972,7 @@ public class Fetcher<K, V> implements Closeable {
     }
 
     /**
-     * Send the ListOffsetRequest to a specific broker for the partitions and target timestamps.
+     * 将listOffseRequest发送到分区和目标时间戳的特定代理。
      *
      * @param node The node to send the ListOffsetRequest to.
      * @param timestampsToSearch The mapping from partitions to the target timestamps.
@@ -1010,14 +999,12 @@ public class Fetcher<K, V> implements Closeable {
     }
 
     /**
-     * Callback for the response of the list offset call above.
-     * @param listOffsetsResponse The response from the server.
-     * @param future The future to be completed when the response returns. Note that any partition-level errors will
-     *               generally fail the entire future result. The one exception is UNSUPPORTED_FOR_MESSAGE_FORMAT,
-     *               which indicates that the broker does not support the v1 message format. Partitions with this
-     *               particular error are simply left out of the future map. Note that the corresponding timestamp
-     *               value of each partition may be null only for v0. In v1 and later the ListOffset API would not
-     *               return a null timestamp (-1 is returned instead when necessary).
+     * Callback 对于上面的列表偏移量调用的响应。
+     * @param listOffsetsResponse 来自服务器的响应。
+     * @param future 响应返回时要完成的未来。请注意，任何分区级错误通常都会导致整个未来结果失败。
+     *               唯一的例外是UNSUPPORTED_FOR_MESSAGE_FORMAT，它表示代理不支持v1消息格式。
+     *               具有此特定错误的分区将被排除在未来的映射之外。注意，每个分区对应的时间戳值可能只有在v0中为空。
+     *               在v1和以后的版本中，ListOffset API不会返回空时间戳(必要时返回-1)。
      */
     private void handleListOffsetResponse(ListOffsetsResponse listOffsetsResponse,
                                           RequestFuture<ListOffsetResult> future) {
@@ -1032,7 +1019,7 @@ public class Fetcher<K, V> implements Closeable {
                 switch (error) {
                     case NONE:
                         if (!partition.oldStyleOffsets().isEmpty()) {
-                            // Handle v0 response with offsets
+                            // 处理带有偏移量的v0响应
                             long offset;
                             if (partition.oldStyleOffsets().size() > 1) {
                                 future.raise(new IllegalStateException("Unexpected partitionData response of length " +
@@ -1048,7 +1035,7 @@ public class Fetcher<K, V> implements Closeable {
                                 fetchedOffsets.put(topicPartition, offsetData);
                             }
                         } else {
-                            // Handle v1 and later response or v0 without offsets
+                            // 处理v1和之后的响应或v0而不进行偏移
                             log.debug("Handling ListOffsetResponse response for {}. Fetched offset {}, timestamp {}",
                                 topicPartition, partition.offset(), partition.timestamp());
                             if (partition.offset() != ListOffsetsResponse.UNKNOWN_OFFSET) {
@@ -1062,9 +1049,8 @@ public class Fetcher<K, V> implements Closeable {
                         }
                         break;
                     case UNSUPPORTED_FOR_MESSAGE_FORMAT:
-                        // The message format on the broker side is before 0.10.0, which means it does not
-                        // support timestamps. We treat this case the same as if we weren't able to find an
-                        // offset corresponding to the requested timestamp and leave it out of the result.
+                        // 代理端的消息格式在0.10.0之前，这意味着它不支持时间戳。
+                        // 我们将这种情况视为无法找到与请求的时间戳对应的偏移量并将其排除在结果之外。
                         log.debug("Cannot search by timestamp for partition {} because the message format version " +
                                       "is before 0.10.0", topicPartition);
                         break;
@@ -1127,7 +1113,7 @@ public class Fetcher<K, V> implements Closeable {
     }
 
     /**
-     * Determine which replica to read from.
+     * 确定要从哪个副本读取。
      */
     Node selectReadReplica(TopicPartition partition, Node leaderReplica, long currentTimeMs) {
         Optional<Integer> nodeId = subscriptions.preferredReadReplica(partition, currentTimeMs);
@@ -1147,7 +1133,7 @@ public class Fetcher<K, V> implements Closeable {
     }
 
     /**
-     * 如果我们看到了新的元数据（由 {@link metadataUpdateVersion} 跟踪），那么我们应该检查所有分配的位置是否有效。
+     * 如果我们看到了新的元数据（由 { @link metadataUpdateVersion} 跟踪），那么我们应该检查所有分配的位置是否有效。
      */
     private void validatePositionsOnMetadataChange() {
         int newMetadataUpdateVersion = metadata.updateVersion();
@@ -1182,18 +1168,17 @@ public class Fetcher<K, V> implements Closeable {
                 continue;
             }
 
-            // Use the preferred read replica if set, otherwise the position's leader
+            // 如果设置了首选读副本，则使用首选读副本，否则使用该位置的leader
             Node node = selectReadReplica(partition, leaderOpt.get(), currentTimeMs);
             if (client.isUnavailable(node)) {
                 client.maybeThrowAuthFailure(node);
 
-                // If we try to send during the reconnect backoff window, then the request is just
-                // going to be failed anyway before being sent, so skip the send for now
+                // 如果我们在重新连接回退窗口期间尝试发送，那么请求在发送之前就会失败，所以现在跳过发送
                 log.trace("Skipping fetch for partition {} because node {} is awaiting reconnect backoff", partition, node);
             } else if (this.nodesWithPendingFetchRequests.contains(node.id())) {
                 log.trace("Skipping fetch for partition {} because previous request to {} has not been processed", partition, node);
             } else {
-                // if there is a leader and no in-flight requests, issue a new fetch
+                // 如果存在leader并且没有正在执行的请求，则发出一个新的fetch
                 FetchSessionHandler.Builder builder = fetchable.get(node);
                 if (builder == null) {
                     int id = node.id();
@@ -1322,7 +1307,7 @@ public class Fetcher<K, V> implements Closeable {
             } else if (error == Errors.OFFSET_OUT_OF_RANGE) {
                 Optional<Integer> clearedReplicaId = subscriptions.clearPreferredReadReplica(tp);
                 if (!clearedReplicaId.isPresent()) {
-                    // If there's no preferred replica to clear, we're fetching from the leader so handle this error normally
+                    // 如果没有需要清除的首选副本，我们正在从leader取回，所以正常处理这个错误
                     FetchPosition position = subscriptions.position(tp);
                     if (position == null || fetchOffset != position.offset) {
                         log.debug("Discarding stale fetch response for partition {} since the fetched offset {} " +
@@ -1335,7 +1320,7 @@ public class Fetcher<K, V> implements Closeable {
                             clearedReplicaId.get(), tp, error, fetchOffset);
                 }
             } else if (error == Errors.TOPIC_AUTHORIZATION_FAILED) {
-                //we log the actual partition and not just the topic to help with ACL propagation issues in large clusters
+                // 我们记录实际分区，而不仅仅是主题，以帮助解决大型集群中的ACL传播问题
                 log.warn("Not authorized to read from partition {}.", tp);
                 throw new TopicAuthorizationException(Collections.singleton(tp.topic()));
             } else if (error == Errors.UNKNOWN_LEADER_EPOCH) {
@@ -1360,8 +1345,7 @@ public class Fetcher<K, V> implements Closeable {
                 nextCompletedFetch.metricAggregator.record(tp, 0, 0);
 
             if (error != Errors.NONE)
-                // we move the partition to the end if there was an error. This way, it's more likely that partitions for
-                // the same topic can remain together (allowing for more efficient serialization).
+                // 如果出现错误，我们将分区移到最后。这样，相同主题的分区更有可能保持在一起(允许更有效的序列化)。
                 subscriptions.movePartitionToEnd(tp);
         }
 
@@ -1415,7 +1399,7 @@ public class Fetcher<K, V> implements Closeable {
     }
 
     /**
-     * Clear the buffered data which are not a part of newly assigned partitions
+     * 清除不属于新分配分区一部分的缓冲数据
      *
      * @param assignedPartitions  newly assigned {@link TopicPartition}
      */
@@ -1437,7 +1421,7 @@ public class Fetcher<K, V> implements Closeable {
     }
 
     /**
-     * Clear the buffered data which are not a part of newly assigned topics
+     * 清除不属于新分配主题的缓存数据
      *
      * @param assignedTopics  newly assigned topics
      */
@@ -1451,7 +1435,6 @@ public class Fetcher<K, V> implements Closeable {
         clearBufferedDataForUnassignedPartitions(currentTopicPartitions);
     }
 
-    // Visible for testing
     protected FetchSessionHandler sessionHandler(int node) {
         return sessionHandlers.get(node);
     }
@@ -1687,9 +1670,8 @@ public class Fetcher<K, V> implements Closeable {
     }
 
     /**
-     * Since we parse the message data for each partition from each fetch response lazily, fetch-level
-     * metrics need to be aggregated as the messages from each partition are parsed. This class is used
-     * to facilitate this incremental aggregation.
+     * 由于我们从每个提取响应中惰性地解析每个分区的消息数据，因此需要在解析来自每个分区的消息时聚合提取级指标。
+     * 该类用于促进这种增量聚合。
      */
     private static class FetchResponseMetricAggregator {
         private final FetchManagerMetrics sensors;
@@ -1705,14 +1687,13 @@ public class Fetcher<K, V> implements Closeable {
         }
 
         /**
-         * After each partition is parsed, we update the current metric totals with the total bytes
-         * and number of records parsed. After all partitions have reported, we write the metric.
+         * 在解析每个分区之后，我们使用解析的总字节数和记录数更新当前度量总数。在所有分区都报告之后，我们编写度量。
          */
         public void record(TopicPartition partition, int bytes, int records) {
             this.unrecordedPartitions.remove(partition);
             this.fetchMetrics.increment(bytes, records);
 
-            // collect and aggregate per-topic metrics
+            // 收集和汇总每个主题的指标
             String topic = partition.topic();
             FetchMetrics topicFetchMetric = this.topicFetchMetrics.get(topic);
             if (topicFetchMetric == null) {
@@ -1722,11 +1703,11 @@ public class Fetcher<K, V> implements Closeable {
             topicFetchMetric.increment(bytes, records);
 
             if (this.unrecordedPartitions.isEmpty()) {
-                // once all expected partitions from the fetch have reported in, record the metrics
+                // 一旦报告了所有预期的分区，就记录指标
                 this.sensors.bytesFetched.record(this.fetchMetrics.fetchBytes);
                 this.sensors.recordsFetched.record(this.fetchMetrics.fetchRecords);
 
-                // also record per-topic metrics
+                // 还要记录每个主题的指标
                 for (Map.Entry<String, FetchMetrics> entry: this.topicFetchMetrics.entrySet()) {
                     FetchMetrics metric = entry.getValue();
                     this.sensors.recordTopicFetchMetrics(entry.getKey(), metric.fetchBytes, metric.fetchRecords);
@@ -1786,7 +1767,7 @@ public class Fetcher<K, V> implements Closeable {
         }
 
         private void recordTopicFetchMetrics(String topic, int bytes, int records) {
-            // record bytes fetched
+            // 获取的记录字节
             String name = "topic." + topic + ".bytes-fetched";
             Sensor bytesFetched = this.metrics.getSensor(name);
             if (bytesFetched == null) {
@@ -1802,7 +1783,7 @@ public class Fetcher<K, V> implements Closeable {
             }
             bytesFetched.record(bytes);
 
-            // record records fetched
+            // 记录获取的记录
             name = "topic." + topic + ".records-fetched";
             Sensor recordsFetched = this.metrics.getSensor(name);
             if (recordsFetched == null) {

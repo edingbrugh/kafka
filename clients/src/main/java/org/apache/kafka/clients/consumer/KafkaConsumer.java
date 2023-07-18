@@ -155,7 +155,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
 
             LogContext logContext;
 
-            // If group.instance.id is set, we will append it to the log context.
+            // 如果设置了group.instance.id，我们将把它附加到日志上下文中。
             if (groupRebalanceConfig.groupInstanceId.isPresent()) {
                 logContext = new LogContext("[Consumer instanceId=" + groupRebalanceConfig.groupInstanceId.get() +
                         ", clientId=" + clientId + ", groupId=" + groupId.orElse("null") + "] ");
@@ -250,7 +250,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
                     config.originals(Collections.singletonMap(ConsumerConfig.CLIENT_ID_CONFIG, clientId))
             );
 
-            // no coordinator will be constructed for the default (null) group id
+            // 不会为默认(null)组id构造任何协调器
             this.coordinator = !groupId.isPresent() ? null :
                     new ConsumerCoordinator(groupRebalanceConfig,
                             logContext,
@@ -293,17 +293,16 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
             AppInfoParser.registerAppInfo(JMX_PREFIX, clientId, metrics, time.milliseconds());
             log.debug("Kafka consumer initialized");
         } catch (Throwable t) {
-            // call close methods if internal objects are already constructed; this is to prevent resource leak. see KAFKA-2121
-            // we do not need to call `close` at all when `log` is null, which means no internal objects were initialized.
+            // 如果内部对象已经构造，调用close方法;这是为了防止资源泄漏。在KAFKA-2121中，当' log '为null时，
+            // 我们根本不需要调用' close '，这意味着没有初始化内部对象。
             if (this.log != null) {
                 close(0, true);
             }
-            // now propagate the exception
+            // 立刻抛出传播异常
             throw new KafkaException("Failed to construct kafka consumer", t);
         }
     }
 
-    // visible for testing
     KafkaConsumer(LogContext logContext,
                   String clientId,
                   ConsumerCoordinator coordinator,
@@ -443,10 +442,10 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
     }
 
     /**
-     * Unsubscribe from topics currently subscribed with {@link #subscribe(Collection)} or {@link #subscribe(Pattern)}.
-     * This also clears any partitions directly assigned through {@link #assign(Collection)}.
+     * 取消订阅当前订阅的主题 {@link #subscribe(Collection)} or {@link #subscribe(Pattern)}.
+     * 这也会清除直接分配的分区 {@link #assign(Collection)}.
      *
-     * @throws org.apache.kafka.common.KafkaException for any other unrecoverable errors (e.g. rebalance callback errors)
+     * @throws org.apache.kafka.common.KafkaException 对于任何其他不可恢复的错误(例如，rebalance回调错误)
      */
     public void unsubscribe() {
         acquireAndEnsureOpen();
@@ -481,8 +480,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
                 }
                 fetcher.clearBufferedDataForUnassignedPartitions(partitions);
 
-                // make sure the offsets of topic partitions the consumer is unsubscribing from
-                // are committed since there will be no following rebalance
+                // 确保消费者取消订阅的主题分区偏移量已提交，因为不会有后续的再平衡
                 if (coordinator != null) {
                     this.coordinator.maybeAutoCommitOffsetsAsync(time.milliseconds());
                 }
@@ -562,7 +560,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
     }
 
     /**
-     * @throws KafkaException if the rebalance callback throws exception
+     * @throws KafkaException 如果reBalance回调抛出异常
      */
     private Map<TopicPartition, List<ConsumerRecord<K, V>>> pollForFetches(Timer timer) {
         long pollTimeout = coordinator == null ? timer.remainingMs() :
@@ -703,12 +701,12 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
     }
 
     /**
-     * Seek to the first offset for each of the given partitions. This function evaluates lazily, seeking to the
-     * first offset in all partitions only when {@link #poll(Duration)} or {@link #position(TopicPartition)} are called.
-     * If no partitions are provided, seek to the first offset for all of the currently assigned partitions.
+     * 查找每个给定分区的第一个偏移量。此函数惰性求值，仅在下列情况下才在所有分区中查找第一个偏移量
+     *  {@link #poll(Duration)} or {@link #position(TopicPartition)} 被回调
+     * 如果没有提供分区，则查找所有当前分配的分区的第一个偏移量。
      *
      * @throws IllegalArgumentException if {@code partitions} is {@code null}
-     * @throws IllegalStateException    if any of the provided partitions are not currently assigned to this consumer
+     * @throws IllegalStateException    如果提供的任何分区当前没有分配给此消费者
      */
     @Override
     public void seekToBeginning(Collection<TopicPartition> partitions) {
@@ -914,8 +912,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
         acquireAndEnsureOpen();
         try {
             for (Map.Entry<TopicPartition, Long> entry : timestampsToSearch.entrySet()) {
-                // we explicitly exclude the earliest and latest offset here so the timestamp in the returned
-                // OffsetAndTimestamp is always positive.
+                // 我们在这里显式地排除了最早和最近的偏移量，因此返回的OffsetAndTimestamp中的时间戳始终是正的。
                 if (entry.getValue() < 0) {
                     throw new IllegalArgumentException("The target time for partition " + entry.getKey() + " is " +
                             entry.getValue() + ". The target time cannot be negative.");
@@ -1026,8 +1023,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
         acquire();
         try {
             if (!closed) {
-                // need to close before setting the flag since the close function
-                // itself may trigger rebalance callback that needs the consumer to be open still
+                // 需要在设置标志之前关闭，因为关闭函数本身可能会触发需要消费者仍然打开的rebalance回调
                 close(timeout.toMillis(), false);
             }
         } finally {
@@ -1084,7 +1080,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
 
 
     private boolean updateFetchPositions(final Timer timer) {
-        // If any partitions have been truncated due to a leader change, we need to validate the offsets
+        // 如果任何分区由于leader更改而被截断，我们需要验证偏移量
         fetcher.validateOffsetsIfNeeded();
 
         cachedSubscriptionHashAllFetchPositions = subscriptions.hasAllFetchPositions();
@@ -1092,31 +1088,26 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
             return true;
         }
 
-        // If there are any partitions which do not have a valid position and are not
-        // awaiting reset, then we need to fetch committed offsets. We will only do a
-        // coordinator lookup if there are partitions which have missing positions, so
-        // a consumer with manually assigned partitions can avoid a coordinator dependence
-        // by always ensuring that assigned partitions have an initial position.
+        // 如果有任何分区没有一个有效的位置并且没有等待重置，那么我们需要获取已提交的偏移量。我们只会在存在缺少位置的分区时进行协调器查找，
+        // 因此使用手动分配分区的消费者可以通过始终确保分配的分区具有初始位置来避免协调器依赖。
         if (coordinator != null && !coordinator.refreshCommittedOffsetsIfNeeded(timer)) {
             return false;
         }
 
-        // If there are partitions still needing a position and a reset policy is defined,
-        // request reset using the default policy. If no reset strategy is defined and there
-        // are partitions with a missing position, then we will raise an exception.
+        // 如果存在仍然需要位置的分区，并且定义了重置策略，则使用默认策略请求重置。如果没有定义重置策略，
+        // 并且存在位置缺失的分区，那么我们将引发异常。
         subscriptions.resetInitializingPositions();
 
-        // Finally send an asynchronous request to lookup and update the positions of any
-        // partitions which are awaiting reset.
+        // 最后发送一个异步请求来查找和更新等待重置的分区的位置。
         fetcher.resetOffsetsIfNeeded();
 
         return true;
     }
 
     /**
-     * Acquire the light lock and ensure that the consumer hasn't been closed.
+     * 获得锁，并确保消费者没有被关闭。
      *
-     * @throws IllegalStateException If the consumer has been closed
+     * @throws IllegalStateException 如果消费者已经关闭
      */
     private void acquireAndEnsureOpen() {
         acquire();
@@ -1127,11 +1118,9 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
     }
 
     /**
-     * Acquire the light lock protecting this consumer from multi-threaded access. Instead of blocking
-     * when the lock is not available, however, we just throw an exception (since multi-threaded usage is not
-     * supported).
+     * 获取保护该消费者免受多线程访问的光锁。但是，当锁不可用时，我们只是抛出一个异常(因为不支持多线程使用)，而不是阻塞。
      *
-     * @throws ConcurrentModificationException if another thread already has the lock
+     * @throws ConcurrentModificationException 如果另一个线程已经拥有该锁
      */
     private void acquire() {
         long threadId = Thread.currentThread().getId();
@@ -1142,7 +1131,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
     }
 
     /**
-     * Release the light lock protecting the consumer from multi-threaded access.
+     * 释放保护消费者免受多线程访问的锁。
      */
     private void release() {
         if (refcount.decrementAndGet() == 0) {
@@ -1170,7 +1159,7 @@ public class KafkaConsumer<K, V> implements Consumer<K, V> {
         }
     }
 
-    // Functions below are for testing only
+    // 下面的函数仅用于测试
     String getClientId() {
         return clientId;
     }
