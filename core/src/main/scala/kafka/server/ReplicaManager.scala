@@ -930,11 +930,11 @@ class ReplicaManager(val config: KafkaConfig,
           // 获取写入的topicPartition
           val partition = getPartitionOrException(topicPartition)
 
-          // todo 写入日志的地方，tmd终于找到了
+          // TODO 写入日志的地方，tmd终于找到了
           val info = partition.appendRecordsToLeader(records, origin, requiredAcks, requestLocal)
           val numAppendedMessages = info.numMessages
 
-          // todo 更新成功追加的字节和消息的统计数据为bytesInRate和messageInRate
+          // TODO 更新成功追加的字节和消息的统计数据为bytesInRate和messageInRate
           brokerTopicStats.topicStats(topicPartition.topic).bytesInRate.mark(records.sizeInBytes)
           brokerTopicStats.allTopicsStats.bytesInRate.mark(records.sizeInBytes)
           brokerTopicStats.topicStats(topicPartition.topic).messagesInRate.mark(numAppendedMessages)
@@ -946,8 +946,7 @@ class ReplicaManager(val config: KafkaConfig,
 
           (topicPartition, LogAppendResult(info))
         } catch {
-          // NOTE: Failed produce requests metric is not incremented for known exceptions
-          // it is supposed to indicate un-expected failures of a broker in handling a produce request
+          // NOTE: 对于已知的异常，不增加失败的产品请求度量 它应该指示broker在处理生成请求时意外失败
           case e@ (_: UnknownTopicOrPartitionException |
                    _: NotLeaderOrFollowerException |
                    _: RecordTooLargeException |

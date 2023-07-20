@@ -533,7 +533,7 @@ class KafkaApis(val requestChannel: RequestChannel,
   }
 
   /**
-   * Handle a produce request
+   * 处理生产者信息
    */
   def handleProduceRequest(request: RequestChannel.Request, requestLocal: RequestLocal): Unit = {
     val produceRequest = request.body[ProduceRequest]
@@ -574,8 +574,8 @@ class KafkaApis(val requestChannel: RequestChannel,
         }
     })
 
-    // producerresponse的构造能够接受自动生成的协议数据，
-    // 所以KafkaApishandleProduceRequest应该应用自动生成的协议来避免额外的转换。
+    // producerResponse的构造能够接受自动生成的协议数据，
+    // 所以KafkaApisHandleProduceRequest应该应用自动生成的协议来避免额外的转换。
     @nowarn("cat=deprecation")
     def sendResponseCallback(responseStatus: Map[TopicPartition, PartitionResponse]): Unit = {
       val mergedResponseStatus = responseStatus ++ unauthorizedTopicResponses ++ nonExistingTopicResponses ++ invalidRequestResponses
