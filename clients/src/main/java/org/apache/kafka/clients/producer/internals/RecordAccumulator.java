@@ -161,21 +161,10 @@ public final class RecordAccumulator {
     }
 
     /**
-     * Add a record to the accumulator, return the append result
+     * 向累加器添加一条记录，返回附加结果
      * <p>
-     * The append result will contain the future metadata, and flag for whether the appended batch is full or a new batch is created
+     * 追加结果将包含未来的元数据，并标记追加的批处理是已满还是创建了新批处理
      * <p>
-     *
-     * @param tp The topic/partition to which this record is being sent
-     * @param timestamp The timestamp of the record
-     * @param key The key for the record
-     * @param value The value for the record
-     * @param headers the Headers for the record
-     * @param callback The user-supplied callback to execute when the request is complete
-     * @param maxTimeToBlock The maximum time in milliseconds to block for buffer memory to be available
-     * @param abortOnNewBatch A boolean that indicates returning before a new batch is created and
-     *                        running the partitioner's onNewBatch method before trying to append again
-     * @param nowMs The current time, in milliseconds
      */
     public RecordAppendResult append(TopicPartition tp,
                                      long timestamp,
@@ -186,13 +175,12 @@ public final class RecordAccumulator {
                                      long maxTimeToBlock,
                                      boolean abortOnNewBatch,
                                      long nowMs) throws InterruptedException {
-        // We keep track of the number of appending thread to make sure we do not miss batches in
-        // abortIncompleteBatches().
+        // 我们跟踪附加线程的数量，以确保我们不会在abortIncompleteBatches()中错过批次。
         appendsInProgress.incrementAndGet();
         ByteBuffer buffer = null;
         if (headers == null) headers = Record.EMPTY_HEADERS;
         try {
-            // check if we have an in-progress batch
+            // 检查我们是否有正在进行的批次
             Deque<ProducerBatch> dq = getOrCreateDeque(tp);
             synchronized (dq) {
                 if (closed)
@@ -202,9 +190,9 @@ public final class RecordAccumulator {
                     return appendResult;
             }
 
-            // we don't have an in-progress record batch try to allocate a new batch
+            // 我们没有正在进行的记录批尝试分配一个新批
             if (abortOnNewBatch) {
-                // Return a result that will cause another call to append.
+                // 返回将导致另一个追加调用的结果。
                 return new RecordAppendResult(null, false, false, true);
             }
 
@@ -213,16 +201,16 @@ public final class RecordAccumulator {
             log.trace("Allocating a new {} byte message buffer for topic {} partition {} with remaining timeout {}ms", size, tp.topic(), tp.partition(), maxTimeToBlock);
             buffer = free.allocate(size, maxTimeToBlock);
 
-            // Update the current time in case the buffer allocation blocked above.
+            // 如果上面的缓冲区分配阻塞，则更新当前时间。
             nowMs = time.milliseconds();
             synchronized (dq) {
-                // Need to check if producer is closed again after grabbing the dequeue lock.
+                // 需要在获取dequeue锁后检查生产者是否再次关闭。
                 if (closed)
                     throw new KafkaException("Producer closed while send in progress");
 
                 RecordAppendResult appendResult = tryAppend(timestamp, key, value, headers, callback, dq, nowMs);
                 if (appendResult != null) {
-                    // Somebody else found us a batch, return the one we waited for! Hopefully this doesn't happen often...
+                    // 有人给我们找了一批，把我们等的那个还给我们!希望这不会经常发生……
                     return appendResult;
                 }
 
@@ -234,7 +222,7 @@ public final class RecordAccumulator {
                 dq.addLast(batch);
                 incomplete.add(batch);
 
-                // Don't deallocate this buffer in the finally block as it's being used in the record batch
+                // 不要在finally块中释放这个缓冲区，因为它正在记录批处理中使用
                 buffer = null;
                 return new RecordAppendResult(future, dq.size() > 1 || batch.isFull(), true, false);
             }
@@ -254,12 +242,8 @@ public final class RecordAccumulator {
     }
 
     /**
-     *  Try to append to a ProducerBatch.
-     *
-     *  If it is full, we return null and a new batch is created. We also close the batch for record appends to free up
-     *  resources like compression buffers. The batch will be fully closed (ie. the record batch headers will be written
-     *  and memory records built) in one of the following cases (whichever comes first): right before send,
-     *  if it is expired, or when the producer is closed.
+     *  尝试追加到一个ProducerBatch。如果已满，则返回null并创建一个新的批处理。我们还关闭记录追加的批处理，以释放压缩缓冲区等资源。
+     *  这批货将被完全封闭。记录批处理头将在以下情况之一(以先出现的为准)被写入和内存记录:在发送之前，如果过期，或者当生产者关闭时。
      */
     private RecordAppendResult tryAppend(long timestamp, byte[] key, byte[] value, Header[] headers,
                                          Callback callback, Deque<ProducerBatch> deque, long nowMs) {
@@ -284,8 +268,7 @@ public final class RecordAccumulator {
 
     public void maybeUpdateNextBatchExpiryTime(ProducerBatch batch) {
         if (batch.createdMs + deliveryTimeoutMs  > 0) {
-            // the non-negative check is to guard us against potential overflow due to setting
-            // a large value for deliveryTimeoutMs
+            // 非否定检查是为了防止由于设置了较大的deliveryTimeoutMs值而导致的潜在溢出
             nextBatchExpiryTimeMs = Math.min(nextBatchExpiryTimeMs, batch.createdMs + deliveryTimeoutMs);
         } else {
             log.warn("Skipping next batch expiry time update due to addition overflow: "
@@ -294,12 +277,12 @@ public final class RecordAccumulator {
     }
 
     /**
-     * Get a list of batches which have been sitting in the accumulator too long and need to be expired.
+     * 获取在累加器中放置时间过长且需要过期的批次列表。
      */
     public List<ProducerBatch> expiredBatches(long now) {
         List<ProducerBatch> expiredBatches = new ArrayList<>();
         for (Map.Entry<TopicPartition, Deque<ProducerBatch>> entry : this.batches.entrySet()) {
-            // expire the batches in the order of sending
+            // 按发送顺序使批过期
             Deque<ProducerBatch> deque = entry.getValue();
             synchronized (deque) {
                 while (!deque.isEmpty()) {
@@ -323,8 +306,7 @@ public final class RecordAccumulator {
     }
 
     /**
-     * Re-enqueue the given record batch in the accumulator. In Sender.completeBatch method, we check
-     * whether the batch has reached deliveryTimeoutMs or not. Hence we do not do the delivery timeout check here.
+     * 在累加器中重新排队给定的记录批。在Sender.completeBatch方法中，我们检查批处理是否达到了deliveryTimeoutMs。因此，我们在这里不做交付超时检查。
      */
     public void reenqueue(ProducerBatch batch, long now) {
         batch.reenqueued(now);
@@ -338,13 +320,10 @@ public final class RecordAccumulator {
     }
 
     /**
-     * Split the big batch that has been rejected and reenqueue the split batches in to the accumulator.
-     * @return the number of split batches.
+     * 拆分已被拒绝的大批，并将拆分后的批重新排队到累加器中。
      */
     public int splitAndReenqueue(ProducerBatch bigBatch) {
-        // Reset the estimated compression ratio to the initial value or the big batch compression ratio, whichever
-        // is bigger. There are several different ways to do the reset. We chose the most conservative one to ensure
-        // the split doesn't happen too often.
+        // 将估计的压缩比重置为初始值或大批量压缩比，以较大者为准。有几种不同的重置方法。我们选择了最保守的一个，以确保分裂不会发生太频繁。
         CompressionRatioEstimator.setEstimation(bigBatch.topicPartition.topic(), compression,
                                                 Math.max(1.0f, (float) bigBatch.compressionRatio()));
         Deque<ProducerBatch> dq = bigBatch.split(this.batchSize);

@@ -708,14 +708,12 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
     }
 
     /**
-     * Aborts the ongoing transaction. Any unflushed produce messages will be aborted when this call is made.
-     * This call will throw an exception immediately if any prior {@link #send(ProducerRecord)} calls failed with a
-     * {@link ProducerFencedException} or an instance of {@link org.apache.kafka.common.errors.AuthorizationException}.
+     * 中止正在进行的事务。任何未刷新的生成消息将在进行此调用时中止。此调用将立即抛出异常，如果有任何先验 {@link #send(ProducerRecord)}
+     * 回调失败。{@link ProducerFencedException} 或 {@link org.apache.kafka.common.errors.AuthorizationException}.
      *
-     * Note that this method will raise {@link TimeoutException} if the transaction cannot be aborted before expiration
-     * of {@code max.block.ms}. Additionally, it will raise {@link InterruptException} if interrupted.
-     * It is safe to retry in either case, but it is not possible to attempt a different operation (such as commitTransaction)
-     * since the abort may already be in the progress of completing. If not retrying, the only option is to close the producer.
+     * 注意，此方法将引发 {@link TimeoutException} 如果在到期之前无法终止事务 {@code max.block.ms}. 此外，它将提高{@link InterruptException}
+     * 如果中断。在任何一种情况下重试都是安全的，但不可能尝试不同的操作(例如commitTransaction)，因为中止可能已经处于完成的过程中。
+     * 如果不重试，唯一的选择是关闭生产者。
      *
      * @throws IllegalStateException if no transactional.id has been configured or no transaction has been started
      * @throws ProducerFencedException fatal error indicating another producer with the same transactional.id is active
@@ -861,15 +859,14 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
         return doSend(interceptedRecord, callback);
     }
 
-    // Verify that this producer instance has not been closed. This method throws IllegalStateException if the producer
-    // has already been closed.
+    // 验证此生成器实例是否未被关闭。这个方法会抛出IllegalStateException已经关闭了。
     private void throwIfProducerClosed() {
         if (sender == null || !sender.isRunning())
             throw new IllegalStateException("Cannot perform operation after producer has been closed");
     }
 
     /**
-     * Implementation of asynchronously send a record to a topic.
+     *  实现异步发送记录到主题。
      */
     private Future<RecordMetadata> doSend(ProducerRecord<K, V> record, Callback callback) {
         TopicPartition tp = null;
@@ -917,7 +914,6 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             if (log.isTraceEnabled()) {
                 log.trace("Attempting to append record {} with callback {} to topic {} partition {}", record, callback, record.topic(), partition);
             }
-            // producer callback will make sure to call both 'callback' and interceptor callback
             Callback interceptCallback = new InterceptorCallback<>(callback, this.interceptors, tp);
 
             if (transactionManager != null && transactionManager.isTransactional()) {
@@ -949,21 +945,18 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                 this.sender.wakeup();
             }
             return result.future;
-            // handling exceptions and record the errors;
-            // for API exceptions return them in the future,
-            // for other exceptions throw directly
+            // 处理异常并记录错误;对于API异常将来返回，对于其他异常直接抛出
         } catch (ApiException e) {
             log.debug("Exception occurred during message send:", e);
-            // producer callback will make sure to call both 'callback' and interceptor callback
+            // 生产者回调将确保调用'callback'和拦截器回调
             if (tp == null) {
-                // set topicPartition to -1 when null
+                // 当为空时，将topicPartition设置为-1
                 tp = ProducerInterceptors.extractTopicPartition(record);
             }
 
             Callback interceptCallback = new InterceptorCallback<>(callback, this.interceptors, tp);
 
-            // The onCompletion callback does expect a non-null metadata, but one will be created inside
-            // the interceptor's onCompletion implementation before the user's callback is invoked.
+            // onCompletion回调确实需要一个非空的元数据，但是在调用用户的回调之前，会在拦截器的onCompletion实现中创建一个。
             interceptCallback.onCompletion(null, e);
             this.errors.record();
             this.interceptors.onSendError(record, tp, e);
@@ -977,7 +970,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             this.interceptors.onSendError(record, tp, e);
             throw e;
         } catch (Exception e) {
-            // we notify interceptor about all exceptions, since onSend is called before anything else in this method
+            // 我们通知拦截器所有的异常，因为onSend在这个方法中的其他任何东西之前被调用
             this.interceptors.onSendError(record, tp, e);
             throw e;
         }
@@ -1250,9 +1243,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
     }
 
     /**
-     * computes partition for given record.
-     * if the record has partition returns the value otherwise
-     * calls configured partitioner class to compute the partition.
+     * 计算给定记录的分区。如果记录有分区，则返回值，否则调用已配置的分区程序类来计算分区。
      */
     private int partition(ProducerRecord<K, V> record, byte[] serializedKey, byte[] serializedValue, Cluster cluster) {
         Integer partition = record.partition();

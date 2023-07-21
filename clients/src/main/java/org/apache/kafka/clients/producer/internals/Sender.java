@@ -172,7 +172,7 @@ public class Sender implements Runnable {
     }
 
     /**
-     *  获取已达到交付超时的飞行中批次。
+     *  获取已达到交付超时的已经处理中批次。
      */
     private List<ProducerBatch> getExpiredInflightBatches(long now) {
         List<ProducerBatch> expiredBatches = new ArrayList<>();
@@ -350,11 +350,11 @@ public class Sender implements Runnable {
             }
         }
 
-        // create produce requests
+        // 创建生产者请求
         Map<Integer, List<ProducerBatch>> batches = this.accumulator.drain(cluster, result.readyNodes, this.maxRequestSize, now);
         addToInflightBatches(batches);
         if (guaranteeMessageOrder) {
-            // Mute all the partitions drained
+            // 将所有已耗尽的分区销毁
             for (List<ProducerBatch> batchList : batches.values()) {
                 for (ProducerBatch batch : batchList)
                     this.accumulator.mutePartition(batch.topicPartition);
@@ -366,9 +366,8 @@ public class Sender implements Runnable {
         List<ProducerBatch> expiredBatches = this.accumulator.expiredBatches(now);
         expiredBatches.addAll(expiredInflightBatches);
 
-        // Reset the producer id if an expired batch has previously been sent to the broker. Also update the metrics
-        // for expired batches. see the documentation of @TransactionState.resetIdempotentProducerId to understand why
-        // we need to reset the producer id here.
+        // 如果过期的批处理之前已发送给代理，则重置生产者id。还要更新过期批次的指标。请参阅@TransactionState的文档。
+        // resetIdempotentProducerId来理解为什么我们需要在这里重置生产者id。
         if (!expiredBatches.isEmpty())
             log.trace("Expired {} batches in accumulator", expiredBatches.size());
         for (ProducerBatch expiredBatch : expiredBatches) {
@@ -382,20 +381,17 @@ public class Sender implements Runnable {
         }
         sensors.updateProduceRequestMetrics(batches);
 
-        // If we have any nodes that are ready to send + have sendable data, poll with 0 timeout so this can immediately
-        // loop and try sending more data. Otherwise, the timeout will be the smaller value between next batch expiry
-        // time, and the delay time for checking data availability. Note that the nodes may have data that isn't yet
-        // sendable due to lingering, backing off, etc. This specifically does not include nodes with sendable data
-        // that aren't ready to send since they would cause busy looping.
+        // 如果我们有任何节点准备好发送+有可发送的数据，用0超时轮询，这样就可以立即循环并尝试发送更多的数据。
+        // 否则，超时时间为下一次批处理过期时间与检查数据可用性的延迟时间之间的较小者。请注意，
+        // 节点可能有由于延迟、退出等原因而无法发送的数据。这特别不包括具有可发送数据的节点
+        // 它们还没有准备好发送，因为它们会导致繁忙的循环。
         long pollTimeout = Math.min(result.nextReadyCheckDelayMs, notReadyTimeout);
         pollTimeout = Math.min(pollTimeout, this.accumulator.nextExpiryTimeMs() - now);
         pollTimeout = Math.max(pollTimeout, 0);
         if (!result.readyNodes.isEmpty()) {
             log.trace("Nodes with data ready to send: {}", result.readyNodes);
-            // if some partitions are already ready to be sent, the select time would be 0;
-            // otherwise if some partition already has some data accumulated but not ready yet,
-            // the select time will be the time difference between now and its linger expiry time;
-            // otherwise the select time will be the time difference between now and the metadata expiry time;
+            // 如果一些分区已经准备好发送，选择时间将为0;否则，如果某个分区已经积累了一些数据，
+            // 但尚未准备好，则选择时间将是现在与其逗留到期时间之间的时间差;否则，选择时间将是现在与元数据过期时间之间的时间差;
             pollTimeout = 0;
         }
         sendProduceRequests(batches, now);
@@ -467,7 +463,7 @@ public class Sender implements Runnable {
         } catch (IOException e) {
             log.debug("Disconnect from {} while trying to send request {}. Going " +
                     "to back off and retry.", targetNode, requestBuilder, e);
-            // We break here so that we pick up the FindCoordinator request immediately.
+            // 我们在这里中断，以便立即获取FindCoordinator请求。
             maybeFindCoordinatorAndRetry(nextRequestHandler);
             return true;
         }
@@ -477,7 +473,7 @@ public class Sender implements Runnable {
         if (nextRequestHandler.needsCoordinator()) {
             transactionManager.lookupCoordinator(nextRequestHandler);
         } else {
-            // For non-coordinator requests, sleep here to prevent a tight loop when no node is available
+            // 对于非协调器请求，在这里休眠以防止在没有节点可用时出现紧循环
             time.sleep(retryBackoffMs);
             metadata.requestUpdate();
         }
@@ -493,18 +489,17 @@ public class Sender implements Runnable {
     }
 
     /**
-     * Start closing the sender (won't actually complete until all data is sent out)
+     * 开始关闭发送器(直到所有数据发送出去才真正完成)
      */
     public void initiateClose() {
-        // Ensure accumulator is closed first to guarantee that no more appends are accepted after
-        // breaking from the sender loop. Otherwise, we may miss some callbacks when shutting down.
+        // 确保首先关闭累加器，以确保在脱离发送方循环后不再接受追加。否则，我们可能会在关闭时错过一些回调。
         this.accumulator.close();
         this.running = false;
         this.wakeup();
     }
 
     /**
-     * Closes the sender without sending out any pending messages.
+     * 关闭发送方而不发送任何挂起的消息。
      */
     public void forceClose() {
         this.forceClose = true;
@@ -518,9 +513,7 @@ public class Sender implements Runnable {
     private boolean awaitNodeReady(Node node, FindCoordinatorRequest.CoordinatorType coordinatorType) throws IOException {
         if (NetworkClientUtils.awaitReady(client, node, time, requestTimeoutMs)) {
             if (coordinatorType == FindCoordinatorRequest.CoordinatorType.TRANSACTION) {
-                // Indicate to the transaction manager that the coordinator is ready, allowing it to check ApiVersions
-                // This allows us to bump transactional epochs even if the coordinator is temporarily unavailable at
-                // the time when the abortable error is handled
+                // 向事务管理器指示协调器已准备好，允许它检查ApiVersions。这允许我们在处理可中止错误时，即使协调器暂时不可用，也可以碰撞事务时间
                 transactionManager.handleCoordinatorReady();
             }
             return true;
@@ -528,9 +521,6 @@ public class Sender implements Runnable {
         return false;
     }
 
-    /**
-     * Handle a produce response
-     */
     private void handleProduceResponse(ClientResponse response, Map<TopicPartition, ProducerBatch> batches, long now) {
         RequestHeader requestHeader = response.requestHeader();
         int correlationId = requestHeader.correlationId();
@@ -547,9 +537,8 @@ public class Sender implements Runnable {
                 completeBatch(batch, new ProduceResponse.PartitionResponse(Errors.UNSUPPORTED_VERSION), correlationId, now);
         } else {
             log.trace("Received produce response from node {} with correlation id {}", response.destination(), correlationId);
-            // if we have a response, parse it
             if (response.hasResponse()) {
-                // Sender should exercise PartitionProduceResponse rather than ProduceResponse.PartitionResponse
+                // 发送方应该执行partitionProducerResponse而不是producerResponse。PartitionResponse
                 // https://issues.apache.org/jira/browse/KAFKA-10696
                 ProduceResponse produceResponse = (ProduceResponse) response.responseBody();
                 produceResponse.data().responses().forEach(r -> r.partitionResponses().forEach(p -> {
@@ -569,7 +558,7 @@ public class Sender implements Runnable {
                 }));
                 this.sensors.recordLatency(response.destination(), response.requestLatencyMs());
             } else {
-                // this is the acks = 0 case, just complete all requests
+                // 这是acks = 0的情况，只需完成所有请求
                 for (ProducerBatch batch : batches.values()) {
                     completeBatch(batch, new ProduceResponse.PartitionResponse(Errors.NONE), correlationId, now);
                 }
@@ -578,12 +567,7 @@ public class Sender implements Runnable {
     }
 
     /**
-     * Complete or retry the given batch of records.
-     *
-     * @param batch The record batch
-     * @param response The produce response
-     * @param correlationId The correlation id for the request
-     * @param now The current POSIX timestamp in milliseconds
+     * 完成或重试给定的一批记录。
      */
     private void completeBatch(ProducerBatch batch, ProduceResponse.PartitionResponse response, long correlationId,
                                long now) {
@@ -591,8 +575,7 @@ public class Sender implements Runnable {
 
         if (error == Errors.MESSAGE_TOO_LARGE && batch.recordCount > 1 && !batch.isDone() &&
                 (batch.magic() >= RecordBatch.MAGIC_VALUE_V2 || batch.isCompressed())) {
-            // If the batch is too large, we split the batch and send the split batches again. We do not decrement
-            // the retry attempts in this case.
+            // 如果批处理太大，我们将拆分批处理并再次发送拆分批处理。在这种情况下，我们不会减少重试尝试次数。
             log.warn(
                 "Got error produce response in correlation id {} on topic-partition {}, splitting and retrying ({} attempts left). Error: {}",
                 correlationId,
@@ -614,16 +597,11 @@ public class Sender implements Runnable {
                     formatErrMsg(response));
                 reenqueueBatch(batch, now);
             } else if (error == Errors.DUPLICATE_SEQUENCE_NUMBER) {
-                // If we have received a duplicate sequence error, it means that the sequence number has advanced beyond
-                // the sequence of the current batch, and we haven't retained batch metadata on the broker to return
-                // the correct offset and timestamp.
-                //
-                // The only thing we can do is to return success to the user and not return a valid offset and timestamp.
+                // 如果我们收到了重复序列错误，这意味着序列号已经超出了当前批的序列，并且我们没有在代理上保留批元数据以返回正确的偏移量和时间戳。
+                // 我们唯一能做的就是向用户返回成功，而不返回有效的偏移量和时间戳。
                 completeBatch(batch, response);
             } else {
-                // tell the user the result of their request. We only adjust sequence numbers if the batch didn't exhaust
-                // its retries -- if it did, we don't know whether the sequence number was accepted or not, and
-                // thus it is not safe to reassign the sequence.
+                // 告诉用户他们请求的结果。只有在批次没有用尽重试次数的情况下，我们才调整序列号——如果没有，我们不知道序列号是否被接受，因此重新分配序列是不安全的。
                 failBatch(batch, response, batch.attempts() < this.retries);
             }
             if (error.exception() instanceof InvalidMetadataException) {
@@ -642,15 +620,10 @@ public class Sender implements Runnable {
             completeBatch(batch, response);
         }
 
-        // Unmute the completed partition.
         if (guaranteeMessageOrder)
             this.accumulator.unmutePartition(batch.topicPartition);
     }
 
-    /**
-     * Format the error from a {@link ProduceResponse.PartitionResponse} in a user-friendly string
-     * e.g "NETWORK_EXCEPTION. Error Message: Disconnected from node 0"
-     */
     private String formatErrMsg(ProduceResponse.PartitionResponse response) {
         String errorMessageSuffix = (response.errorMessage == null || response.errorMessage.isEmpty()) ?
                 "" : String.format(". Error Message: %s", response.errorMessage);
@@ -689,10 +662,8 @@ public class Sender implements Runnable {
         } else {
             Map<Integer, RuntimeException> recordErrorMap = new HashMap<>(response.recordErrors.size());
             for (ProduceResponse.RecordError recordError : response.recordErrors) {
-                // The API leaves us with some awkwardness interpreting the errors in the response.
-                // We cannot differentiate between different error cases (such as INVALID_TIMESTAMP)
-                // from the single error code at the partition level, so instead we use INVALID_RECORD
-                // for all failed records and rely on the message to distinguish the cases.
+                // API在解释响应中的错误时给我们留下了一些尴尬。我们无法从分区级别的单个错误代码中区分不同的错误情况(例如INVALID_TIMESTAMP)，
+                // 因此我们对所有失败记录使用INVALID_RECORD，并依靠消息来区分这些情况。
                 final String errorMessage;
                 if (recordError.message != null) {
                     errorMessage = recordError.message;
@@ -702,8 +673,7 @@ public class Sender implements Runnable {
                     errorMessage = response.error.message();
                 }
 
-                // If the batch contained only a single record error, then we can unambiguously
-                // use the exception type corresponding to the partition-level error code.
+                // 如果批处理只包含一条记录错误，那么我们可以明确地使用与分区级错误代码对应的异常类型。
                 if (response.recordErrors.size() == 1) {
                     recordErrorMap.put(recordError.batchIndex, response.error.exception(errorMessage));
                 } else {
@@ -716,9 +686,7 @@ public class Sender implements Runnable {
                 if (exception != null) {
                     return exception;
                 } else {
-                    // If the response contains record errors, then the records which failed validation
-                    // will be present in the response. To avoid confusion for the remaining records, we
-                    // return a generic exception.
+                    // 如果响应包含记录错误，那么验证失败的记录将出现在响应中。为了避免对其余记录产生混淆，我们返回一个泛型异常。
                     return new KafkaException("Failed to append record because it was part of a batch " +
                         "which had one more more invalid records");
                 }
@@ -754,9 +722,8 @@ public class Sender implements Runnable {
     }
 
     /**
-     * We can retry a send if the error is transient and the number of attempts taken is fewer than the maximum allowed.
-     * We can also retry OutOfOrderSequence exceptions for future batches, since if the first batch has failed, the
-     * future batches are certain to fail with an OutOfOrderSequence exception.
+     * 如果错误是暂时的，并且尝试的次数少于允许的最大次数，则可以重试发送。
+     * 我们还可以为以后的批处理重试OutOfOrderSequence异常，因为如果第一批处理失败，则将来的批处理肯定会因OutOfOrderSequence异常而失败。
      */
     private boolean canRetry(ProducerBatch batch, ProduceResponse.PartitionResponse response, long now) {
         return !batch.hasReachedDeliveryTimeout(accumulator.getDeliveryTimeoutMs(), now) &&
@@ -768,7 +735,7 @@ public class Sender implements Runnable {
     }
 
     /**
-     * Transfer the record batches into a list of produce requests on a per-node basis
+     * 以每个节点为基础，将记录批次转移到产品请求列表中
      */
     private void sendProduceRequests(Map<Integer, List<ProducerBatch>> collated, long now) {
         for (Map.Entry<Integer, List<ProducerBatch>> entry : collated.entrySet())
@@ -776,7 +743,7 @@ public class Sender implements Runnable {
     }
 
     /**
-     * Create a produce request from the given record batches
+     * 从给定的记录批次中创建一个农产品请求
      */
     private void sendProduceRequest(long now, int destination, short acks, int timeout, List<ProducerBatch> batches) {
         if (batches.isEmpty())
@@ -784,7 +751,7 @@ public class Sender implements Runnable {
 
         final Map<TopicPartition, ProducerBatch> recordsByPartition = new HashMap<>(batches.size());
 
-        // find the minimum magic version used when creating the record sets
+        // 找到创建记录集时使用的最小魔术版本
         byte minUsedMagic = apiVersions.maxUsableProduceMagic();
         for (ProducerBatch batch : batches) {
             if (batch.magic() < minUsedMagic)
@@ -795,13 +762,10 @@ public class Sender implements Runnable {
             TopicPartition tp = batch.topicPartition;
             MemoryRecords records = batch.records();
 
-            // down convert if necessary to the minimum magic used. In general, there can be a delay between the time
-            // that the producer starts building the batch and the time that we send the request, and we may have
-            // chosen the message format based on out-dated metadata. In the worst case, we optimistically chose to use
-            // the new message format, but found that the broker didn't support it, so we need to down-convert on the
-            // client before sending. This is intended to handle edge cases around cluster upgrades where brokers may
-            // not all support the same message format version. For example, if a partition migrates from a broker
-            // which is supporting the new magic version to one which doesn't, then we will need to convert.
+            // 如果有必要，向下转换为最小的魔法使用。通常，在生产者开始构建批处理的时间和我们发送请求的时间之间可能存在延迟，
+            // 并且我们可能基于过时的元数据选择了消息格式。在最坏的情况下，我们乐观地选择使用新的消息格式，但发现代理不支持它，
+            // 因此我们需要在发送之前在客户机上进行向下转换。这是为了处理围绕集群升级的边缘情况，在这种情况下，
+            // 代理可能并不都支持相同的消息格式版本。例如，如果分区从支持新魔术版本的代理迁移到不支持新魔术版本的代理，那么我们将需要进行转换。
             if (!records.hasMatchingMagic(minUsedMagic))
                 records = batch.records().downConvert(minUsedMagic, 0, time).records();
             ProduceRequestData.TopicProduceData tpData = tpd.find(tp.topic());
@@ -836,7 +800,7 @@ public class Sender implements Runnable {
     }
 
     /**
-     * Wake up the selector associated with this send thread
+     * 唤醒与此发送线程关联的选择器
      */
     public void wakeup() {
         this.client.wakeup();
@@ -850,7 +814,7 @@ public class Sender implements Runnable {
     }
 
     /**
-     * A collection of sensors for the sender
+     *发送方的传感器集合
      */
     private static class SenderMetrics {
         public final Sensor retrySensor;
@@ -907,8 +871,7 @@ public class Sender implements Runnable {
         }
 
         private void maybeRegisterTopicMetrics(String topic) {
-            // if one sensor of the metrics has been registered for the topic,
-            // then all other sensors should have been registered; and vice versa
+            // 如果指标的一个传感器已经为主题注册，那么所有其他传感器都应该已经注册;反之亦然
             String topicRecordsCountName = "topic." + topic + ".records-per-batch";
             Sensor topicRecordCount = this.metrics.getSensor(topicRecordsCountName);
             if (topicRecordCount == null) {
