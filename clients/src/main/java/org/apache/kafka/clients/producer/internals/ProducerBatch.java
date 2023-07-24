@@ -51,9 +51,7 @@ import static org.apache.kafka.common.record.RecordBatch.MAGIC_VALUE_V2;
 import static org.apache.kafka.common.record.RecordBatch.NO_TIMESTAMP;
 
 /**
- * A batch of records that is or will be sent.
- *
- * This class is not thread safe and external synchronization must be used when modifying it
+ *  正在发送或将要发送的一批记录。这个类不是线程安全的，在修改它时必须使用外部同步
  */
 public final class ProducerBatch {
 
@@ -98,9 +96,9 @@ public final class ProducerBatch {
     }
 
     /**
-     * Append the record to the current record set and return the relative offset within that record set
+     * 将记录追加到当前记录集中，并返回该记录集中的相对偏移量
      *
-     * @return The RecordSend corresponding to this record or null if there isn't sufficient room.
+     * @return 与此记录对应的RecordSend，如果没有足够的空间，则为null。
      */
     public FutureRecordMetadata     tryAppend(long timestamp, byte[] key, byte[] value, Header[] headers, Callback callback, long now) {
         if (!recordsBuilder.hasRoomFor(timestamp, key, value, headers)) {
@@ -115,8 +113,7 @@ public final class ProducerBatch {
                                                                    key == null ? -1 : key.length,
                                                                    value == null ? -1 : value.length,
                                                                    Time.SYSTEM);
-            // we have to keep every future returned to the users in case the batch needs to be
-            // split to several new batches and resent.
+            // 我们必须保留每个未来返回给用户，以防需要将批拆分为几个新批并重新发送。
             thunks.add(new Thunk(callback, future));
             this.recordCount++;
             return future;
@@ -124,14 +121,14 @@ public final class ProducerBatch {
     }
 
     /**
-     * This method is only used by {@link #split(int)} when splitting a large batch to smaller ones.
-     * @return true if the record has been successfully appended, false otherwise.
+     *  此方法仅在将大批拆分为小批时使用{@link #split(int)}。
+     * @return 如果记录已成功追加，则为True，否则为false。
      */
     private boolean tryAppendForSplit(long timestamp, ByteBuffer key, ByteBuffer value, Header[] headers, Thunk thunk) {
         if (!recordsBuilder.hasRoomFor(timestamp, key, value, headers)) {
             return false;
         } else {
-            // No need to get the CRC.
+            // 不需要得到CRC。
             this.recordsBuilder.append(timestamp, key, value, headers);
             this.maxRecordSize = Math.max(this.maxRecordSize, AbstractRecords.estimateSizeInBytesUpperBound(magic(),
                     recordsBuilder.compressionType(), key, value, headers));
@@ -149,7 +146,7 @@ public final class ProducerBatch {
     }
 
     /**
-     * Abort the batch and complete the future and callbacks.
+     * 中止批处理并完成future和回调。
      *
      * @param exception The exception to use to complete the future and awaiting callbacks.
      */
@@ -162,7 +159,7 @@ public final class ProducerBatch {
     }
 
     /**
-     * Check if the batch has been completed (either successfully or exceptionally).
+     * 检查批处理是否已完成(成功或异常)。
      * @return `true` if the batch has been completed, `false` otherwise.
      */
     public boolean isDone() {
@@ -170,7 +167,7 @@ public final class ProducerBatch {
     }
 
     /**
-     * Complete the batch successfully.
+     *  成功完成批处理。
      * @param baseOffset The base offset of the messages assigned by the server
      * @param logAppendTime The log append time or -1 if CreateTime is being used
      * @return true if the batch was completed as a result of this call, and false
@@ -181,8 +178,7 @@ public final class ProducerBatch {
     }
 
     /**
-     * Complete the batch exceptionally. The provided top-level exception will be used
-     * for each record future contained in the batch.
+     *  异常完成批处理。所提供的顶级异常将用于批处理中包含的每个记录的未来。
      *
      * @param topLevelException top-level partition error
      * @param recordExceptions Record exception function mapping batchIndex to the respective record exception
@@ -199,17 +195,11 @@ public final class ProducerBatch {
     }
 
     /**
-     * Finalize the state of a batch. Final state, once set, is immutable. This function may be called
-     * once or twice on a batch. It may be called twice if
-     * 1. An inflight batch expires before a response from the broker is received. The batch's final
-     * state is set to FAILED. But it could succeed on the broker and second time around batch.done() may
-     * try to set SUCCEEDED final state.
-     * 2. If a transaction abortion happens or if the producer is closed forcefully, the final state is
-     * ABORTED but again it could succeed if broker responds with a success.
-     *
-     * Attempted transitions from [FAILED | ABORTED] --> SUCCEEDED are logged.
-     * Attempted transitions from one failure state to the same or a different failed state are ignored.
-     * Attempted transitions from SUCCEEDED to the same or a failed state throw an exception.
+     * 完成批处理的状态。最终状态一旦设置，就是不可变的。这个函数可以在批处理中调用一次或两次。它可以被称为两次if
+     * 1. 在收到代理的响应之前，飞行批处理将过期。批处理的最终状态设置为FAILED。但它可能在代理上成功，而第二次执行batch.done()可能成功
+     * 尝试设置成功的最终状态。
+     * 2. 如果发生事务流产，或者生产者被强制关闭，则最终状态为ABORTED，但如果broker响应成功，则仍然可以成功。从[FAILED | ABORTED]到>
+     * SUCCEEDED的尝试转换将被记录。从一个失败状态到相同或不同失败状态的尝试转换将被忽略。尝试从成功状态转换到相同状态或失败状态将引发异常。
      *
      * @param baseOffset The base offset of the messages assigned by the server
      * @param logAppendTime The log append time or -1 if CreateTime is being used
@@ -237,16 +227,16 @@ public final class ProducerBatch {
 
         if (this.finalState.get() != FinalState.SUCCEEDED) {
             if (tryFinalState == FinalState.SUCCEEDED) {
-                // Log if a previously unsuccessful batch succeeded later on.
+                // 如果先前不成功的批处理稍后成功，则记录日志。
                 log.debug("ProduceResponse returned {} for {} after batch with base offset {} had already been {}.",
                     tryFinalState, topicPartition, baseOffset, this.finalState.get());
             } else {
-                // FAILED --> FAILED and ABORTED --> FAILED transitions are ignored.
+                // FAILED -> FAILED和ABORTED -> FAILED转换将被忽略。
                 log.debug("Ignored state transition {} -> {} for {} batch with base offset {}",
                     this.finalState.get(), tryFinalState, topicPartition, baseOffset);
             }
         } else {
-            // A SUCCESSFUL batch must not attempt another state change.
+            //  成功的批处理不能再尝试另一次状态更改。
             throw new IllegalStateException("A " + this.finalState.get() + " batch must not attempt another state change to " + tryFinalState);
         }
         return false;
@@ -257,10 +247,10 @@ public final class ProducerBatch {
         long logAppendTime,
         Function<Integer, RuntimeException> recordExceptions
     ) {
-        // Set the future before invoking the callbacks as we rely on its state for the `onCompletion` call
+        // 在调用回调之前设置future，因为我们依赖于' onCompletion '调用的状态
         produceFuture.set(baseOffset, logAppendTime, recordExceptions);
 
-        // execute callbacks
+        // 执行回调函数
         for (int i = 0; i < thunks.size(); i++) {
             try {
                 Thunk thunk = thunks.get(i);
@@ -298,8 +288,7 @@ public final class ProducerBatch {
             throw new IllegalArgumentException("A producer batch should only have one record batch.");
 
         Iterator<Thunk> thunkIter = thunks.iterator();
-        // We always allocate batch size because we are already splitting a big batch.
-        // And we also Retain the create time of the original batch.
+        // 我们总是分配批大小，因为我们已经分割了一个大的批。我们还保留了原始批的创建时间。
         ProducerBatch batch = null;
 
         for (Record record : recordBatch) {
@@ -308,7 +297,7 @@ public final class ProducerBatch {
             if (batch == null)
                 batch = createBatchOffAccumulatorForRecord(record, splitBatchSize);
 
-            // A newly created batch can always host the first message.
+            // 新创建的批处理总是可以承载第一条消息。
             if (!batch.tryAppendForSplit(record.timestamp(), record.key(), record.value(), record.headers(), thunk)) {
                 batches.add(batch);
                 batch.closeForRecordAppends();
@@ -317,7 +306,7 @@ public final class ProducerBatch {
             }
         }
 
-        // Close the last batch and add it to the batch list after split.
+        // 关闭最后一个批处理，并在拆分后将其添加到批处理列表中。
         if (batch != null) {
             batches.add(batch);
             batch.closeForRecordAppends();
@@ -342,9 +331,8 @@ public final class ProducerBatch {
                 recordsBuilder.compressionType(), record.key(), record.value(), record.headers()), batchSize);
         ByteBuffer buffer = ByteBuffer.allocate(initialSize);
 
-        // Note that we intentionally do not set producer state (producerId, epoch, sequence, and isTransactional)
-        // for the newly created batch. This will be set when the batch is dequeued for sending (which is consistent
-        // with how normal batches are handled).
+        // 注意，我们有意不为新创建的批设置生产者状态(producerId、epoch、sequence和is Transactional)。
+        // 这将在将批处理从队列中取出以进行发送时设置(这与处理普通批处理的方式一致)。
         MemoryRecordsBuilder builder = MemoryRecords.builder(buffer, magic(), recordsBuilder.compressionType(),
                 TimestampType.CREATE_TIME, 0L);
         return new ProducerBatch(topicPartition, builder, this.createdMs, true);
@@ -355,7 +343,7 @@ public final class ProducerBatch {
     }
 
     /**
-     * A callback and the associated FutureRecordMetadata argument to pass to it.
+     * 一个回调函数和关联的FutureRecordMetadata参数传递给它。
      */
     final private static class Thunk {
         final Callback callback;
@@ -408,7 +396,7 @@ public final class ProducerBatch {
     }
 
     /**
-     * Returns if the batch is been retried for sending to kafka
+     * 如果批处理被重试发送到kafka返回
      */
     public boolean inRetry() {
         return this.retry;
@@ -442,8 +430,7 @@ public final class ProducerBatch {
     }
 
     /**
-     * Release resources required for record appends (e.g. compression buffers). Once this method is called, it's only
-     * possible to update the RecordBatch header.
+     * 释放附加记录所需的资源(例如压缩缓冲区)。一旦调用了这个方法，就只能更新RecordBatch头。
      */
     public void closeForRecordAppends() {
         recordsBuilder.closeForRecordAppends();
@@ -460,11 +447,8 @@ public final class ProducerBatch {
     }
 
     /**
-     * Abort the record builder and reset the state of the underlying buffer. This is used prior to aborting
-     * the batch with {@link #abort(RuntimeException)} and ensures that no record previously appended can be
-     * read. This is used in scenarios where we want to ensure a batch ultimately gets aborted, but in which
-     * it is not safe to invoke the completion callbacks (e.g. because we are holding a lock, such as
-     * when aborting batches in {@link RecordAccumulator}).
+     * 中止记录生成器并重置底层缓冲区的状态。这是在流产之前使用的使用{@link #abort(RuntimeException)}进行批处理，并确保之前添加的记录不能被删除
+     * 读。这在我们希望确保批处理最终被终止的场景中使用，但是在其中调用完成回调是不安全的(例如，因为我们持有一个锁，如当在{@link RecordAccumulator})中终止批处理时。
      */
     public void abortRecordAppends() {
         recordsBuilder.abort();
