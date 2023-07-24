@@ -33,10 +33,8 @@ import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
- * A Kafka connection either existing on a client (which could be a broker in an
- * inter-broker scenario) and representing the channel to a remote broker or the
- * reverse (existing on a broker and representing the channel to a remote
- * client, which could be a broker in an inter-broker scenario).
+ * Kafka连接可以存在于客户端(可能是代理间场景中的代理)并将通道表示为远程代理，
+ * 也可以相反(存在于代理上并将通道表示为远程客户端，这可能是代理间场景中的代理)。
  * <p>
  * Each instance has the following:
  * <ul>
@@ -167,9 +165,8 @@ public class KafkaChannel implements AutoCloseable {
     }
 
     /**
-     * Does handshake of transportLayer and authentication using configured authenticator.
-     * For SSL with client authentication enabled, {@link TransportLayer#handshake()} performs
-     * authentication. For SASL, authentication is performed by {@link Authenticator#authenticate()}.
+     * 使用配置的验证器进行transportLayer握手和身份验证。对于启用了客户端身份验证的SSL， {@link TransportLayer#handshake()}
+     * 执行身份验证。对于SASL，身份验证由 {@link Authenticator#authenticate()}.
      */
     public void prepare() throws AuthenticationException, IOException {
         boolean authenticating = false;
@@ -181,8 +178,7 @@ public class KafkaChannel implements AutoCloseable {
                 authenticator.authenticate();
             }
         } catch (AuthenticationException e) {
-            // Clients are notified of authentication exceptions to enable operations to be terminated
-            // without retries. Other errors are handled as network exceptions in Selector.
+            // 客户端会收到身份验证异常的通知，以便终止操作而无需重试。其他错误在选择器中作为网络异常处理。
             String remoteDesc = remoteAddress != null ? remoteAddress.toString() : null;
             state = new ChannelState(ChannelState.State.AUTHENTICATION_FAILED, e, remoteDesc);
             if (authenticating) {
@@ -200,7 +196,7 @@ public class KafkaChannel implements AutoCloseable {
     public void disconnect() {
         disconnected = true;
         if (state == ChannelState.NOT_CONNECTED && remoteAddress != null) {
-            //if we captured the remote address we can provide more information
+            // 如果我们捕获了远程地址，我们可以提供更多的信息
             state = new ChannelState(ChannelState.State.NOT_CONNECTED, remoteAddress.toString());
         }
         transportLayer.disconnect();
@@ -215,8 +211,7 @@ public class KafkaChannel implements AutoCloseable {
     }
 
     public boolean finishConnect() throws IOException {
-        //we need to grab remoteAddr before finishConnect() is called otherwise
-        //it becomes inaccessible if the connection was refused.
+        // 我们需要在调用finishConnect()之前获取remoteAddr，否则如果连接被拒绝，它将无法访问。
         SocketChannel socketChannel = transportLayer.socketChannel();
         if (socketChannel != null) {
             remoteAddress = socketChannel.getRemoteAddress();
@@ -257,10 +252,9 @@ public class KafkaChannel implements AutoCloseable {
     }
 
     /**
-     * Unmute the channel. The channel can be unmuted only if it is in the MUTED state. For other muted states
-     * (MUTED_AND_*), this is a no-op.
+     * 取消通道静音。只有通道处于“静音”状态时，通道才能取消静音。对于其他静音状态(MUTED_AND_*)，这是一个no-op。
      *
-     * @return Whether or not the channel is in the NOT_MUTED state after the call
+     * @return 调用后通道是否处于not_mute状态
      */
     boolean maybeUnmute() {
         if (muteState == ChannelMuteState.MUTED) {
@@ -270,7 +264,7 @@ public class KafkaChannel implements AutoCloseable {
         return muteState == ChannelMuteState.NOT_MUTED;
     }
 
-    // Handle the specified channel mute-related event and transition the mute state according to the state machine.
+    // 处理指定的通道Mute相关事件，并根据状态机转换mute状态。
     public void handleChannelMuteEvent(ChannelMuteEvent event) {
         boolean stateChanged = false;
         switch (event) {
@@ -334,20 +328,16 @@ public class KafkaChannel implements AutoCloseable {
     }
 
     /**
-     * Returns true if this channel has been explicitly muted using {@link KafkaChannel#mute()}
+     * 如果此通道已使用显式Mute，则返回true  {@link KafkaChannel#mute()}
      */
     public boolean isMuted() {
         return muteState != ChannelMuteState.NOT_MUTED;
     }
 
     public boolean isInMutableState() {
-        //some requests do not require memory, so if we do not know what the current (or future) request is
-        //(receive == null) we dont mute. we also dont mute if whatever memory required has already been
-        //successfully allocated (if none is required for the currently-being-read request
-        //receive.memoryAllocated() is expected to return true)
         if (receive == null || receive.memoryAllocated())
             return false;
-        //also cannot mute if underlying transport is not in the ready state
+        // 如果底层传输未处于就绪状态，也无法读取
         return transportLayer.ready();
     }
 
@@ -360,10 +350,8 @@ public class KafkaChannel implements AutoCloseable {
     }
 
     /**
-     * Returns the address to which this channel's socket is connected or `null` if the socket has never been connected.
-     *
-     * If the socket was connected prior to being closed, then this method will continue to return the
-     * connected address after the socket is closed.
+     *  返回此通道的套接字所连接的地址，如果套接字从未连接，则返回' null '。如果套接字在关闭之前已连接，
+     *  则此方法将在套接字关闭后继续返回已连接的地址。
      */
     public InetAddress socketAddress() {
         return transportLayer.socketChannel().socket().getInetAddress();
@@ -402,7 +390,7 @@ public class KafkaChannel implements AutoCloseable {
         long bytesReceived = receive(this.receive);
 
         if (this.receive.requiredMemoryAmountKnown() && !this.receive.memoryAllocated() && isInMutableState()) {
-            //pool must be out of memory, mute ourselves.
+            // 池中一定是内存不足，mute。
             mute();
         }
         return bytesReceived;

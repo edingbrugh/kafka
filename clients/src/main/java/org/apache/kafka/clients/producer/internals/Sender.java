@@ -410,10 +410,9 @@ public class Sender implements Runnable {
 
         if (transactionManager.hasAbortableError() || transactionManager.isAborting()) {
             if (accumulator.hasIncomplete()) {
-                // Attempt to get the last error that caused this abort.
+                // 尝试获取导致此中止的最后一个错误。
                 RuntimeException exception = transactionManager.lastError();
-                // If there was no error, but we are still aborting,
-                // then this is most likely a case where there was no fatal error.
+                // 如果没有错误，但是我们仍然在中止，那么这很可能是没有致命错误的情况。
                 if (exception == null) {
                     exception = new TransactionAbortedException();
                 }
