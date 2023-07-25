@@ -30,40 +30,30 @@ import scala.collection._
 import scala.collection.mutable.ListBuffer
 
 /**
- * An operation whose processing needs to be delayed for at most the given delayMs. For example
- * a delayed produce operation could be waiting for specified number of acks; or
- * a delayed fetch operation could be waiting for a given number of bytes to accumulate.
+ * 一种操作，其处理最多需要延迟给定的延迟时间。例如，延迟的生产操作可能正在等待指定数量的ack;或者，延迟的读取操作可能会等待给定字节数的累积。
  *
- * The logic upon completing a delayed operation is defined in onComplete() and will be called exactly once.
- * Once an operation is completed, isCompleted() will return true. onComplete() can be triggered by either
- * forceComplete(), which forces calling onComplete() after delayMs if the operation is not yet completed,
- * or tryComplete(), which first checks if the operation can be completed or not now, and if yes calls
- * forceComplete().
+ * 完成延迟操作的逻辑在onComplete()中定义，并且只会被调用一次。一旦操作完成，isCompleted()将返回true。onComplete()可以由forceComplete()触发，
+ * 如果操作尚未完成，它会在delayMs之后强制调用onComplete()，或者tryComplete()触发，它首先检查操作现在是否可以完成，
+ * 如果可以，则调用forceComplete()。
  *
- * A subclass of DelayedOperation needs to provide an implementation of both onComplete() and tryComplete().
+ * DelayedOperation的子类需要同时提供onComplete()和tryComplete()的实现。
  *
- * Noted that if you add a future delayed operation that calls ReplicaManager.appendRecords() in onComplete()
- * like DelayedJoin, you must be aware that this operation's onExpiration() needs to call actionQueue.tryCompleteAction().
+ * 注意，如果你在onComplete()中添加一个像DelayedJoin那样调用ReplicaManager.appendRecords()的未来延迟操作，
+ * 你必须意识到这个操作的onExpiration()需要调用actionQueue.tryCompleteAction()。
  */
 abstract class DelayedOperation(override val delayMs: Long,
                                 lockOpt: Option[Lock] = None)
   extends TimerTask with Logging {
 
   private val completed = new AtomicBoolean(false)
-  // Visible for testing
   private[server] val lock: Lock = lockOpt.getOrElse(new ReentrantLock)
 
   /*
-   * Force completing the delayed operation, if not already completed.
-   * This function can be triggered when
-   *
-   * 1. The operation has been verified to be completable inside tryComplete()
-   * 2. The operation has expired and hence needs to be completed right now
-   *
-   * Return true iff the operation is completed by the caller: note that
-   * concurrent threads can try to complete the same operation, but only
-   * the first thread will succeed in completing the operation and return
-   * true, others will still return false
+   * 强制完成延迟的操作(如果尚未完成)。
+   * 1.触发该功能。该操作已在tryComplete()
+   * 2中验证为可完成。如果操作被调用者完成，返回true:注意并发线程可以尝试完成相同的操作，
+   * 但只有第一个线程会成功完成操作并返回true，其他线程仍然会返回false
+
    */
   def forceComplete(): Boolean = {
     if (completed.compareAndSet(false, true)) {
@@ -77,32 +67,28 @@ abstract class DelayedOperation(override val delayMs: Long,
   }
 
   /**
-   * Check if the delayed operation is already completed
+   * 检查延迟的操作是否已经完成
    */
   def isCompleted: Boolean = completed.get()
 
   /**
-   * Call-back to execute when a delayed operation gets expired and hence forced to complete.
+   * 当延迟的操作过期并因此被迫完成时执行的回调。
    */
   def onExpiration(): Unit
 
   /**
-   * Process for completing an operation; This function needs to be defined
-   * in subclasses and will be called exactly once in forceComplete()
+   * 完成一项操作的过程;这个函数需要在子类中定义，并且在forceComplete()中只调用一次。
    */
   def onComplete(): Unit
 
   /**
-   * Try to complete the delayed operation by first checking if the operation
-   * can be completed by now. If yes execute the completion logic by calling
-   * forceComplete() and return true iff forceComplete returns true; otherwise return false
-   *
-   * This function needs to be defined in subclasses
+   * 尝试完成延迟的操作，首先检查操作现在是否可以完成。如果是，通过调用forceComplete()执行完成逻辑并返回true，
+   * 如果forceComplete返回true;此函数需要在子类中定义
    */
   def tryComplete(): Boolean
 
   /**
-   * Thread-safe variant of tryComplete() and call extra function if first tryComplete returns false
+   * tryComplete()的线程安全变体，如果第一个tryComplete返回false，则调用额外的函数
    * @param f else function to be executed after first tryComplete returns false
    * @return result of tryComplete
    */
@@ -307,12 +293,12 @@ final class DelayedOperationPurgatory[T <: DelayedOperation](purgatoryName: Stri
   }
 
   /*
-   * Remove the key from watcher lists if its list is empty
+   * 如果该键的列表为空，则从监视列表中删除该键
    */
   private def removeKeyIfEmpty(key: Any, watchers: Watchers): Unit = {
     val wl = watcherList(key)
     inLock(wl.watchersLock) {
-      // if the current key is no longer correlated to the watchers to remove, skip
+      // 如果当前键不再与要删除的监视程序相关，则跳过
       if (wl.watchersByKey.get(key) != watchers)
         return
 
@@ -334,22 +320,22 @@ final class DelayedOperationPurgatory[T <: DelayedOperation](purgatoryName: Stri
   }
 
   /**
-   * A linked list of watched delayed operations based on some key
+   * 基于某个键的监视延迟操作的链表
    */
   private class Watchers(val key: Any) {
     private[this] val operations = new ConcurrentLinkedQueue[T]()
 
-    // count the current number of watched operations. This is O(n), so use isEmpty() if possible
+    // 统计当前被监视操作的个数。这是O(n)，所以如果可能的话使用isEmpty()
     def countWatched: Int = operations.size
 
     def isEmpty: Boolean = operations.isEmpty
 
-    // add the element to watch
+    // 添加要监视的元素
     def watch(t: T): Unit = {
       operations.add(t)
     }
 
-    // traverse the list and try to complete some watched elements
+    // 遍历列表并尝试完成一些被监视的元素
     def tryCompleteWatched(): Int = {
       var completed = 0
 
@@ -357,7 +343,7 @@ final class DelayedOperationPurgatory[T <: DelayedOperation](purgatoryName: Stri
       while (iter.hasNext) {
         val curr = iter.next()
         if (curr.isCompleted) {
-          // another thread has completed this operation, just remove it
+          // 另一个线程已完成此操作，请删除它
           iter.remove()
         } else if (curr.safeTryComplete()) {
           iter.remove()
@@ -383,7 +369,7 @@ final class DelayedOperationPurgatory[T <: DelayedOperation](purgatoryName: Stri
       cancelled.toList
     }
 
-    // traverse the list and purge elements that are already completed by others
+    // 遍历列表并清除其他人已经完成的元素
     def purgeCompleted(): Int = {
       var purged = 0
 
@@ -406,13 +392,10 @@ final class DelayedOperationPurgatory[T <: DelayedOperation](purgatoryName: Stri
   def advanceClock(timeoutMs: Long): Unit = {
     timeoutTimer.advanceClock(timeoutMs)
 
-    // Trigger a purge if the number of completed but still being watched operations is larger than
-    // the purge threshold. That number is computed by the difference btw the estimated total number of
-    // operations and the number of pending delayed operations.
+    // 如果已完成但仍在监视的操作数量大于清除阈值，则触发清除。这个数字是通过估计的操作总数与挂起的延迟操作数量之差计算出来的。
     if (estimatedTotalOperations.get - numDelayed > purgeInterval) {
-      // now set estimatedTotalOperations to delayed (the number of pending operations) since we are going to
-      // clean up watchers. Note that, if more operations are completed during the clean up, we may end up with
-      // a little overestimated total number of operations.
+      // 现在将estimatedTotalOperations设置为delayed(等待操作的数量)，因为我们要清理观察者。请注意，
+      // 如果在清理过程中完成了更多的操作，我们最终可能会稍微高估操作总数。
       estimatedTotalOperations.getAndSet(numDelayed)
       debug("Begin purging watch lists")
       val purged = watcherLists.foldLeft(0) {
