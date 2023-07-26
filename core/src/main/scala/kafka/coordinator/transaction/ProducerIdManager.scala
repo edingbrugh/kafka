@@ -31,23 +31,21 @@ import java.util.concurrent.atomic.AtomicBoolean
 import scala.util.{Failure, Success, Try}
 
 /**
- * ProducerIdManager is the part of the transaction coordinator that provides ProducerIds in a unique way
- * such that the same producerId will not be assigned twice across multiple transaction coordinators.
+ * ProducerIdManager是事务协调器的一部分，它以一种独特的方式提供producerId，使相同的producerId不会跨多个事务协调器分配两次。
  *
- * ProducerIds are managed by the controller. When requesting a new range of IDs, we are guaranteed to receive
- * a unique block.
+ * ProducerId由控制器管理。当请求一个新的id范围时，我们保证会收到一个唯一的块。
  */
 
 object ProducerIdManager {
-  // Once we reach this percentage of PIDs consumed from the current block, trigger a fetch of the next block
+  // 一旦我们从当前块中消耗的pid达到这个百分比，就触发下一个块的获取
   val PidPrefetchThreshold = 0.90
 
-  // Creates a ProducerIdGenerate that directly interfaces with ZooKeeper, IBP < 3.0-IV0
+  // 创建一个ProducerIdGenerate，直接与ZooKeeper接口，IBP < 3.0-IV0
   def zk(brokerId: Int, zkClient: KafkaZkClient): ZkProducerIdManager = {
     new ZkProducerIdManager(brokerId, zkClient)
   }
 
-  // Creates a ProducerIdGenerate that uses AllocateProducerIds RPC, IBP >= 3.0-IV0
+  // 创建一个使用AllocateProducerIds RPC的ProducerIdGenerate, IBP >= 3.0-IV0
   def rpc(brokerId: Int,
             brokerEpochSupplier: () => Long,
             controllerChannel: BrokerToControllerChannelManager,
@@ -63,21 +61,20 @@ trait ProducerIdManager {
 
 object ZkProducerIdManager {
   def getNewProducerIdBlock(brokerId: Int, zkClient: KafkaZkClient, logger: Logging): ProducerIdsBlock = {
-    // Get or create the existing PID block from ZK and attempt to update it. We retry in a loop here since other
-    // brokers may be generating PID blocks during a rolling upgrade
+    // 从ZK获取或创建现有的PID块，并尝试更新它。我们在循环中重试，因为其他代理可能在滚动升级期间生成PID块
     var zkWriteComplete = false
     while (!zkWriteComplete) {
-      // refresh current producerId block from zookeeper again
+      // 再次从zookeeper中刷新当前的producerId块
       val (dataOpt, zkVersion) = zkClient.getDataAndVersion(ProducerIdBlockZNode.path)
 
-      // generate the new producerId block
+      // 生成新的producerId块
       val newProducerIdBlock = dataOpt match {
         case Some(data) =>
           val currProducerIdBlock = ProducerIdBlockZNode.parseProducerIdBlockData(data)
           logger.debug(s"Read current producerId block $currProducerIdBlock, Zk path version $zkVersion")
 
           if (currProducerIdBlock.producerIdEnd > Long.MaxValue - ProducerIdsBlock.PRODUCER_ID_BLOCK_SIZE) {
-            // we have exhausted all producerIds (wow!), treat it as a fatal error
+            // 我们已经耗尽了所有的producerid(哇!)，将其视为致命错误
             logger.fatal(s"Exhausted all producerIds as the next block's end producerId is will has exceeded long type limit (current block end producerId is ${currProducerIdBlock.producerIdEnd})")
             throw new KafkaException("Have exhausted all producerIds.")
           }
@@ -90,7 +87,7 @@ object ZkProducerIdManager {
 
       val newProducerIdBlockData = ProducerIdBlockZNode.generateProducerIdBlockJson(newProducerIdBlock)
 
-      // try to write the new producerId block into zookeeper
+      // 尝试将新的producerId块写入zookeeper
       val (succeeded, version) = zkClient.conditionalUpdatePath(ProducerIdBlockZNode.path, newProducerIdBlockData, zkVersion, None)
       zkWriteComplete = succeeded
 
@@ -111,7 +108,7 @@ class ZkProducerIdManager(brokerId: Int,
   private var currentProducerIdBlock: ProducerIdsBlock = ProducerIdsBlock.EMPTY
   private var nextProducerId: Long = _
 
-  // grab the first block of producerIds
+  // 获取第一个producerid块
   this synchronized {
     allocateNewProducerIdBlock()
     nextProducerId = currentProducerIdBlock.producerIdStart
@@ -125,7 +122,7 @@ class ZkProducerIdManager(brokerId: Int,
 
   def generateProducerId(): Long = {
     this synchronized {
-      // grab a new block of producerIds if this block has been exhausted
+      // 如果该块已耗尽，则获取一个新的producerid块
       if (nextProducerId > currentProducerIdBlock.producerIdEnd) {
         allocateNewProducerIdBlock()
         nextProducerId = currentProducerIdBlock.producerIdStart
@@ -151,19 +148,19 @@ class RPCProducerIdManager(brokerId: Int,
   override def generateProducerId(): Long = {
     this synchronized {
       if (nextProducerId == -1L) {
-        // Send an initial request to get the first block
+        // 发送初始请求以获取第一个块
         maybeRequestNextBlock()
         nextProducerId = 0L
       } else {
         nextProducerId += 1
 
-        // Check if we need to fetch the next block
+        // 检查是否需要获取下一个block
         if (nextProducerId >= (currentProducerIdBlock.producerIdStart + currentProducerIdBlock.producerIdLen * ProducerIdManager.PidPrefetchThreshold)) {
           maybeRequestNextBlock()
         }
       }
 
-      // If we've exhausted the current block, grab the next block (waiting if necessary)
+      // 如果我们已经耗尽了当前的块，抓取下一个块(必要时等待)
       if (nextProducerId > currentProducerIdBlock.producerIdEnd) {
         val block = nextProducerIdBlock.poll(maxWaitMs, TimeUnit.MILLISECONDS)
         if (block == null) {
@@ -211,7 +208,7 @@ class RPCProducerIdManager(brokerId: Int,
     Errors.forCode(data.errorCode()) match {
       case Errors.NONE =>
         debug(s"Got next producer ID block from controller $data")
-        // Do some sanity checks on the response
+        // 响应进行一些完整性检查
         if (data.producerIdStart() < currentProducerIdBlock.producerIdEnd) {
           nextProducerIdBlock.put(Failure(new KafkaException(
             s"Producer ID block is not monotonic with current block: current=$currentProducerIdBlock response=$data")))

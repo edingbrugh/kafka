@@ -26,30 +26,25 @@ import org.apache.kafka.common.errors.InvalidOffsetException
 import org.apache.kafka.common.record.RecordBatch
 
 /**
- * An index that maps from the timestamp to the logical offsets of the messages in a segment. This index might be
- * sparse, i.e. it may not hold an entry for all the messages in the segment.
+ * 从时间戳映射到段中消息的逻辑偏移量的索引。这个索引可能是稀疏的，也就是说，它可能不包含段中所有消息的条目。
  *
- * The index is stored in a file that is preallocated to hold a fixed maximum amount of 12-byte time index entries.
- * The file format is a series of time index entries. The physical format is a 8 bytes timestamp and a 4 bytes "relative"
- * offset used in the [[OffsetIndex]]. A time index entry (TIMESTAMP, OFFSET) means that the biggest timestamp seen
- * before OFFSET is TIMESTAMP. i.e. Any message whose timestamp is greater than TIMESTAMP must come after OFFSET.
+ * 索引存储在一个预先分配的文件中，以保存固定数量的最大12字节时间索引项。文件格式是一系列时间索引条目。物理格式是一个8字节的时间戳和一个4字节的
+ * “相对”偏移量 [[OffsetIndex]]. 时间索引条目(TIMESTAMP, OFFSET)表示所看到的最大时间戳
+ * 在OFFSET之前是TIMESTAMP。即任何时间戳大于timestamp的消息都必须出现在OFFSET之后。
  *
- * All external APIs translate from relative offsets to full offsets, so users of this class do not interact with the internal
- * storage format.
+ * 所有外部api都将相对偏移量转换为完整偏移量，因此该类的用户不与内部存储格式交互。
  *
- * The timestamps in the same time index file are guaranteed to be monotonically increasing.
+ * 同一时间索引文件中的时间戳保证是单调递增的。
  *
- * The index supports timestamp lookup for a memory map of this file. The lookup is done using a binary search to find
- * the offset of the message whose indexed timestamp is closest but smaller or equals to the target timestamp.
+ * 索引支持该文件的内存映射的时间戳查找。查找是使用二进制搜索来查找其索引时间戳最接近但小于或等于目标时间戳的消息的偏移量。
  *
- * Time index files can be opened in two ways: either as an empty, mutable index that allows appending or
- * an immutable read-only index file that has previously been populated. The makeReadOnly method will turn a mutable file into an
- * immutable one and truncate off any extra bytes. This is done when the index file is rolled over.
+ * 时间索引文件可以通过两种方式打开:一种是允许追加的空可变索引，另一种是以前已填充的不可变只读索引文件。
+ * makeReadOnly方法将可变文件转换为不可变文件，并截断任何额外的字节。这是在滚动索引文件时完成的。
  *
- * No attempt is made to checksum the contents of this file, in the event of a crash it is rebuilt.
+ * 不尝试对该文件的内容进行校验和，如果发生崩溃，则重新构建该文件。
  *
  */
-// Avoid shadowing mutable file in AbstractIndex
+// 避免在AbstractIndex中隐藏可变文件
 class TimeIndex(_file: File, baseOffset: Long, maxIndexSize: Int = -1, writable: Boolean = true)
     extends AbstractIndex(_file, baseOffset, maxIndexSize, writable) {
   import TimeIndex._
@@ -61,7 +56,7 @@ class TimeIndex(_file: File, baseOffset: Long, maxIndexSize: Int = -1, writable:
   debug(s"Loaded index file ${file.getAbsolutePath} with maxEntries = $maxEntries, maxIndexSize = $maxIndexSize," +
     s" entries = ${_entries}, lastOffset = ${_lastEntry}, file position = ${mmap.position()}")
 
-  // We override the full check to reserve the last time index entry slot for the on roll call.
+  // 我们覆盖完整检查，为点名保留最后一次索引条目槽位。
   override def isFull: Boolean = entries >= maxEntries - 1
 
   private def timestamp(buffer: ByteBuffer, n: Int): Long = buffer.getLong(n * entrySize)
@@ -71,7 +66,7 @@ class TimeIndex(_file: File, baseOffset: Long, maxIndexSize: Int = -1, writable:
   def lastEntry: TimestampOffset = _lastEntry
 
   /**
-   * Read the last entry from the index file. This operation involves disk access.
+   * 从索引文件中读取最后一个条目。该操作涉及磁盘访问。
    */
   private def lastEntryFromIndexFile: TimestampOffset = {
     inLock(lock) {
@@ -83,9 +78,9 @@ class TimeIndex(_file: File, baseOffset: Long, maxIndexSize: Int = -1, writable:
   }
 
   /**
-   * Get the nth timestamp mapping from the time index
-   * @param n The entry number in the time index
-   * @return The timestamp/offset pair at that entry
+   * 从时间索引获取第n个时间戳映射
+   * @param n 时间索引中的条目号
+   * @return 该条目的时间戳对
    */
   def entry(n: Int): TimestampOffset = {
     maybeLock(lock) {
@@ -101,9 +96,7 @@ class TimeIndex(_file: File, baseOffset: Long, maxIndexSize: Int = -1, writable:
   }
 
   /**
-   * Attempt to append a time index entry to the time index.
-   * The new entry is appended only if both the timestamp and offset are greater than the last appended timestamp and
-   * the last appended offset.
+   * 尝试将时间索引项附加到时间索引。只有当时间戳和偏移量都大于最后一个追加的时间戳和最后一个追加的偏移量时，才追加新条目。
    *
    * @param timestamp The timestamp of the new time index entry
    * @param offset The offset of the new time index entry
@@ -114,21 +107,18 @@ class TimeIndex(_file: File, baseOffset: Long, maxIndexSize: Int = -1, writable:
     inLock(lock) {
       if (!skipFullCheck)
         require(!isFull, "Attempt to append to a full time index (size = " + _entries + ").")
-      // We do not throw exception when the offset equals to the offset of last entry. That means we are trying
-      // to insert the same time index entry as the last entry.
-      // If the timestamp index entry to be inserted is the same as the last entry, we simply ignore the insertion
-      // because that could happen in the following two scenarios:
-      // 1. A log segment is closed.
-      // 2. LogSegment.onBecomeInactiveSegment() is called when an active log segment is rolled.
+      // 当偏移量等于上一项的偏移量时，不会抛出异常。这意味着我们要尝试插入与最后一项相同的时间索引项。如果要插入的时间戳索引条目与
+      // 最后一个条目相同，我们只需忽略插入，因为在以下两个场景中可能会发生这种情况:
+      // 1. 日志段关闭。
+      // 2. 在滚动活动日志段时调用LogSegment.onBecomeInactiveSegment()。
       if (_entries != 0 && offset < lastEntry.offset)
         throw new InvalidOffsetException(s"Attempt to append an offset ($offset) to slot ${_entries} no larger than" +
           s" the last offset appended (${lastEntry.offset}) to ${file.getAbsolutePath}.")
       if (_entries != 0 && timestamp < lastEntry.timestamp)
         throw new IllegalStateException(s"Attempt to append a timestamp ($timestamp) to slot ${_entries} no larger" +
           s" than the last timestamp appended (${lastEntry.timestamp}) to ${file.getAbsolutePath}.")
-      // We only append to the time index when the timestamp is greater than the last inserted timestamp.
-      // If all the messages are in message format v0, the timestamp will always be NoTimestamp. In that case, the time
-      // index will be empty.
+      // 只有当时间戳大于最后插入的时间戳时，才追加时间索引。如果所有消息的消息格式为v0，则时间戳将始终为NoTimestamp。
+      // 在这种情况下，时间索引将为空。
       if (timestamp > lastEntry.timestamp) {
         trace(s"Adding index entry $timestamp => $offset to ${file.getAbsolutePath}.")
         mmap.putLong(timestamp)
@@ -141,9 +131,7 @@ class TimeIndex(_file: File, baseOffset: Long, maxIndexSize: Int = -1, writable:
   }
 
   /**
-   * Find the time index entry whose timestamp is less than or equal to the given timestamp.
-   * If the target timestamp is smaller than the least timestamp in the time index, (NoTimestamp, baseOffset) is
-   * returned.
+   * 查找时间戳小于或等于给定时间戳的时间索引项。如果目标时间戳小于时间索引中最小的时间戳，则返回(NoTimestamp, baseOffset)。
    *
    * @param targetTimestamp The timestamp to look up.
    * @return The time index entry found.
@@ -162,18 +150,17 @@ class TimeIndex(_file: File, baseOffset: Long, maxIndexSize: Int = -1, writable:
   override def truncate() = truncateToEntries(0)
 
   /**
-   * Remove all entries from the index which have an offset greater than or equal to the given offset.
-   * Truncating to an offset larger than the largest in the index has no effect.
+   * 从索引中删除偏移量大于或等于给定偏移量的所有项。截断到比索引中最大的偏移量大的偏移量没有影响。
    */
   override def truncateTo(offset: Long): Unit = {
     inLock(lock) {
       val idx = mmap.duplicate
       val slot = largestLowerBoundSlotFor(idx, offset, IndexSearchType.VALUE)
 
-      /* There are 3 cases for choosing the new size
-       * 1) if there is no entry in the index <= the offset, delete everything
-       * 2) if there is an entry for this exact offset, delete it and everything larger than it
-       * 3) if there is no entry for this offset, delete everything larger than the next smallest
+      /* 有3个箱子可以选择新的尺寸
+       * 1) 如果索引<=偏移量中没有条目，则删除所有条目
+       * 2) 如果有这个精确偏移量的条目，则删除它和比它大的所有条目
+       * 3) 如果没有此偏移量的条目，则删除比下一个最小的条目大的所有条目
        */
       val newEntries =
         if(slot < 0)
@@ -197,7 +184,7 @@ class TimeIndex(_file: File, baseOffset: Long, maxIndexSize: Int = -1, writable:
   }
 
   /**
-   * Truncates index to a known number of entries.
+   * 将索引截断为已知数量的条目。
    */
   private def truncateToEntries(entries: Int): Unit = {
     inLock(lock) {

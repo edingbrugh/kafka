@@ -140,15 +140,14 @@ final class DelayedOperationPurgatory[T <: DelayedOperation](purgatoryName: Stri
                                                              reaperEnabled: Boolean = true,
                                                              timerEnabled: Boolean = true)
         extends Logging with KafkaMetricsGroup {
-  /* a list of operation watching keys */
+  /* 操作监视键的列表 */
   private class WatcherList {
     val watchersByKey = new Pool[Any, Watchers](Some((key: Any) => new Watchers(key)))
 
     val watchersLock = new ReentrantLock()
 
     /*
-     * Return all the current watcher lists,
-     * note that the returned watchers may be removed from the list by other threads
+     * 返回所有当前的监视器列表，注意返回的监视器可能会被其他线程从列表中删除
      */
     def allWatchers = {
       watchersByKey.values
@@ -163,7 +162,7 @@ final class DelayedOperationPurgatory[T <: DelayedOperation](purgatoryName: Stri
   // the number of estimated total operations in the purgatory
   private[this] val estimatedTotalOperations = new AtomicInteger(0)
 
-  /* background thread expiring operations that have timed out */
+  /* 后台线程使操作过期 */
   private val expirationReaper = new ExpiredOperationReaper()
 
   private val metricsTags = Map("delayedOperation" -> purgatoryName)
@@ -174,13 +173,9 @@ final class DelayedOperationPurgatory[T <: DelayedOperation](purgatoryName: Stri
     expirationReaper.start()
 
   /**
-   * Check if the operation can be completed, if not watch it based on the given watch keys
-   *
-   * Note that a delayed operation can be watched on multiple keys. It is possible that
-   * an operation is completed after it has been added to the watch list for some, but
-   * not all of the keys. In this case, the operation is considered completed and won't
-   * be added to the watch list of the remaining keys. The expiration reaper thread will
-   * remove this operation from any watcher list in which the operation exists.
+   * 检查操作是否可以完成，如果不能，则根据给定的监视键观察。注意，延迟的操作可以在多个键上观察。有可能在某个操作被添加到某些键的监视列表后才完成，
+   * 但不是所有键都被添加到监视列表。在这种情况下，操作被认为已经完成，并且不会被添加到剩余键的监视列表中。
+   * 过期收割机线程将从存在该操作的任何监视器列表中删除该操作。
    *
    * @param operation the delayed operation to be checked
    * @param watchKeys keys for bookkeeping the operation
@@ -189,45 +184,42 @@ final class DelayedOperationPurgatory[T <: DelayedOperation](purgatoryName: Stri
   def tryCompleteElseWatch(operation: T, watchKeys: Seq[Any]): Boolean = {
     assert(watchKeys.nonEmpty, "The watch key list can't be empty")
 
-    // The cost of tryComplete() is typically proportional to the number of keys. Calling tryComplete() for each key is
-    // going to be expensive if there are many keys. Instead, we do the check in the following way through safeTryCompleteOrElse().
-    // If the operation is not completed, we just add the operation to all keys. Then we call tryComplete() again. At
-    // this time, if the operation is still not completed, we are guaranteed that it won't miss any future triggering
-    // event since the operation is already on the watcher list for all keys.
+    // tryComplete()的成本通常与键的数量成正比。如果有很多键，对每个键调用tryComplete()将会非常昂贵。相反，
+    // 我们通过safeTryCompleteOrElse()以以下方式执行检查。如果操作未完成，则将该操作添加到所有键上。然后再次调用tryComplete()。
+    // 此时，如果操作仍未完成，我们可以保证它不会错过任何未来的触发事件，因为该操作已经在所有键的监视列表中。
     //
     // ==============[story about lock]==============
-    // Through safeTryCompleteOrElse(), we hold the operation's lock while adding the operation to watch list and doing
-    // the tryComplete() check. This is to avoid a potential deadlock between the callers to tryCompleteElseWatch() and
-    // checkAndComplete(). For example, the following deadlock can happen if the lock is only held for the final tryComplete()
-    // 1) thread_a holds readlock of stateLock from TransactionStateManager
-    // 2) thread_a is executing tryCompleteElseWatch()
-    // 3) thread_a adds op to watch list
-    // 4) thread_b requires writelock of stateLock from TransactionStateManager (blocked by thread_a)
-    // 5) thread_c calls checkAndComplete() and holds lock of op
-    // 6) thread_c is waiting readlock of stateLock to complete op (blocked by thread_b)
-    // 7) thread_a is waiting lock of op to call the final tryComplete() (blocked by thread_c)
+    // 通过safeTryCompleteOrElse()，我们在将操作添加到观察列表并执行tryComplete()检查时保持操作的锁。
+    // 这是为了避免在tryCompleteElseWatch()和checkAndComplete()的调用者之间发生潜在的死锁。例如，如果锁仅在最后的tryComplete()中被持有，
+    // 则可能发生以下死锁
+    // 1) thread_a持有来自TransactionStateManager的stateLock的readlock
+    // 2) thread_a正在执行tryCompleteElseWatch()
+    // 3) Thread_a将op添加到观察列表中
+    // 4) thread_b需要从TransactionStateManager获取stateLock的写锁(被thread_a阻塞)
+    // 5) thread_c调用checkAndComplete()并持有op锁
+    // 6) thread_c正在等待stateLock的读锁完成op(被thread_b阻塞)
+    // 7) thread_a正在等待op的锁来调用最后的tryComplete()(被thread_c阻塞)
     //
-    // Note that even with the current approach, deadlocks could still be introduced. For example,
-    // 1) thread_a calls tryCompleteElseWatch() and gets lock of op
-    // 2) thread_a adds op to watch list
-    // 3) thread_a calls op#tryComplete and tries to require lock_b
-    // 4) thread_b holds lock_b and calls checkAndComplete()
-    // 5) thread_b sees op from watch list
-    // 6) thread_b needs lock of op
-    // To avoid the above scenario, we recommend DelayedOperationPurgatory.checkAndComplete() be called without holding
-    // any exclusive lock. Since DelayedOperationPurgatory.checkAndComplete() completes delayed operations asynchronously,
-    // holding a exclusive lock to make the call is often unnecessary.
+    // 注意，即使使用当前的方法，仍然可能引入死锁。例如,
+    // 1) thread_a调用tryCompleteElseWatch()并获得op锁
+    // 2) Thread_a将op添加到观察列表中
+    // 3) thread_a调用op#tryComplete并尝试请求lock_b
+    // 4) thread_b持有lock_b并调用checkAndComplete()
+    // 5) Thread_b从观察列表中看到op
+    // 6) Thread_b需要op锁
+    // 为了避免上述情况，我们建议在不持有任何排他锁的情况下调用DelayedOperationPurgatory.checkAndComplete()。
+    // 由于DelayedOperationPurgatory.checkAndComplete()异步完成延迟的操作，因此持有排他锁来进行调用通常是不必要的。
     if (operation.safeTryCompleteOrElse {
       watchKeys.foreach(key => watchForOperation(key, operation))
       if (watchKeys.nonEmpty) estimatedTotalOperations.incrementAndGet()
     }) return true
 
-    // if it cannot be completed by now and hence is watched, add to the expire queue also
+    // 如果它现在还不能完成，因此被监视，那么也添加到过期队列中
     if (!operation.isCompleted) {
       if (timerEnabled)
         timeoutTimer.add(operation)
       if (operation.isCompleted) {
-        // cancel the timer task
+        // 取消定时器任务
         operation.cancel()
       }
     }
@@ -236,10 +228,9 @@ final class DelayedOperationPurgatory[T <: DelayedOperation](purgatoryName: Stri
   }
 
   /**
-   * Check if some delayed operations can be completed with the given watch key,
-   * and if yes complete them.
+   * 检查一些延迟的操作是否可以用给定的表键完成，如果可以，完成它们。
    *
-   * @return the number of completed operations during this process
+   * @return 在此过程中完成的操作的数量
    */
   def checkAndComplete(key: Any): Int = {
     val wl = watcherList(key)
@@ -253,21 +244,20 @@ final class DelayedOperationPurgatory[T <: DelayedOperation](purgatoryName: Stri
   }
 
   /**
-   * Return the total size of watch lists the purgatory. Since an operation may be watched
-   * on multiple lists, and some of its watched entries may still be in the watch lists
-   * even when it has been completed, this number may be larger than the number of real operations watched
+   * 返回总大小的手表列表的炼狱。由于一个操作可能在多个列表中被监视，并且即使它已经完成，它的一些被监视的条目可能仍然在监视列表中，
+   * 因此这个数字可能大于实际被监视的操作的数量
    */
   def watched: Int = {
     watcherLists.foldLeft(0) { case (sum, watcherList) => sum + watcherList.allWatchers.map(_.countWatched).sum }
   }
 
   /**
-   * Return the number of delayed operations in the expiry queue
+   * 返回过期队列中延迟操作的个数
    */
   def numDelayed: Int = timeoutTimer.size
 
   /**
-    * Cancel watching on any delayed operations for the given key. Note the operation will not be completed
+    * 取消对给定键的任何延迟操作的监视。注意，操作将不会完成
     */
   def cancelForKey(key: Any): List[T] = {
     val wl = watcherList(key)
@@ -281,8 +271,7 @@ final class DelayedOperationPurgatory[T <: DelayedOperation](purgatoryName: Stri
   }
 
   /*
-   * Return the watch list of the given key, note that we need to
-   * grab the removeWatchersLock to avoid the operation being added to a removed watcher list
+   * 返回给定键的监视列表，注意我们需要获取removeWatchersLock以避免将操作添加到已删除的监视列表中
    */
   private def watchForOperation(key: Any, operation: T): Unit = {
     val wl = watcherList(key)
@@ -406,7 +395,7 @@ final class DelayedOperationPurgatory[T <: DelayedOperation](purgatoryName: Stri
   }
 
   /**
-   * A background reaper to expire delayed operations that have timed out
+   * 后台处理将延迟已超时的操作
    */
   private class ExpiredOperationReaper extends ShutdownableThread(
     "ExpirationReaper-%d-%s".format(brokerId, purgatoryName),

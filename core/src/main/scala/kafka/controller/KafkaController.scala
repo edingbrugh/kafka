@@ -91,7 +91,7 @@ class KafkaController(val config: KafkaConfig,
   var controllerChannelManager = new ControllerChannelManager(controllerContext, config, time, metrics,
     stateChangeLogger, threadNamePrefix)
 
-  // have a separate scheduler for the controller to be able to start and stop independently of the kafka server
+  // 有一个单独的调度程序，使控制器能够独立于kafka服务器启动和停止
   // visible for testing
   private[controller] val kafkaScheduler = new KafkaScheduler(1)
 
@@ -129,7 +129,7 @@ class KafkaController(val config: KafkaConfig,
   @volatile private var ineligibleTopicsToDeleteCount = 0
   @volatile private var ineligibleReplicasToDeleteCount = 0
 
-  /* single-thread scheduler to clean expired tokens */
+  /* 清理过期令牌的单线程调度程序 */
   private val tokenCleanScheduler = new KafkaScheduler(threads = 1, threadNamePrefix = "delegation-token-cleaner")
 
   newGauge("ActiveControllerCount", () => if (isActive) 1 else 0)
@@ -144,7 +144,7 @@ class KafkaController(val config: KafkaConfig,
   newGauge("ReplicasIneligibleToDeleteCount", () => ineligibleReplicasToDeleteCount)
 
   /**
-   * Returns true if this broker is the current controller.
+   * 如果此代理是当前控制器，则返回true。
    */
   def isActive: Boolean = activeControllerId == config.brokerId
 
@@ -153,9 +153,7 @@ class KafkaController(val config: KafkaConfig,
   def epoch: Int = controllerContext.epoch
 
   /**
-   * Invoked when the controller module of a Kafka server is started up. This does not assume that the current broker
-   * is the controller. It merely registers the session expiration listener and starts the controller leader
-   * elector
+   * 当Kafka服务器的控制器模块启动时调用。这并不假设当前代理是控制器。它仅仅注册会话过期侦听器并启动控制器leader选择器
    */
   def startup() = {
     zkClient.registerStateChangeHandler(new StateChangeHandler {

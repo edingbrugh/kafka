@@ -754,15 +754,14 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
     }
 
     /**
-     * @throws KafkaException if the callback throws exception
+     * @throws KafkaException 如果回调抛出异常
      */
     @Override
     public boolean rejoinNeededOrPending() {
         if (!subscriptions.hasAutoAssignedPartitions())
             return false;
 
-        // we need to rejoin if we performed the assignment and metadata has changed;
-        // also for those owned-but-no-longer-existed partitions we should drop them as lost
+        // 如果我们执行了赋值并且元数据发生了变化，我们需要重新连接;同样，对于那些拥有但不再存在的分区，我们应该将它们作为丢失的分区删除
         if (assignmentSnapshot != null && !assignmentSnapshot.matches(metadataSnapshot)) {
             final String reason = String.format("cached metadata has changed from %s at the beginning of the rebalance to %s",
                 assignmentSnapshot, metadataSnapshot);
@@ -770,7 +769,7 @@ public final class ConsumerCoordinator extends AbstractCoordinator {
             return true;
         }
 
-        // we need to join if our subscription has changed since the last join
+        // 如果我们的订阅自上次加入以来发生了变化，我们需要加入
         if (joinedSubscription != null && !joinedSubscription.equals(subscriptions.subscription())) {
             final String reason = String.format("subscription has changed from %s at the beginning of the rebalance to %s",
                 joinedSubscription, subscriptions.subscription());

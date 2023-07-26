@@ -30,20 +30,14 @@ import scala.collection.mutable.ListBuffer
 private[log] case class TxnIndexSearchResult(abortedTransactions: List[AbortedTxn], isComplete: Boolean)
 
 /**
- * The transaction index maintains metadata about the aborted transactions for each segment. This includes
- * the start and end offsets for the aborted transactions and the last stable offset (LSO) at the time of
- * the abort. This index is used to find the aborted transactions in the range of a given fetch request at
- * the READ_COMMITTED isolation level.
- *
- * There is at most one transaction index for each log segment. The entries correspond to the transactions
- * whose commit markers were written in the corresponding log segment. Note, however, that individual transactions
- * may span multiple segments. Recovering the index therefore requires scanning the earlier segments in
- * order to find the start of the transactions.
+ * 事务索引维护关于每个段的终止事务的元数据。这包括中止事务的开始和结束偏移量以及中止时的最后稳定偏移量(LSO)。
+ * 该索引用于在READ_COMMITTED隔离级别查找给定读取请求范围内的已终止事务。每个日志段最多有一个事务索引。
+ * 这些条目对应于在相应日志段中写入提交标记的事务。但是，请注意，单个事务可能跨越多个段。因此，恢复索引需要扫描较早的段，以便找到事务的开始。
  */
 @nonthreadsafe
 class TransactionIndex(val startOffset: Long, @volatile private var _file: File) extends Logging {
 
-  // note that the file is not created until we need it
+  // 请注意，直到我们需要它时才会创建该文件
   @volatile private var maybeChannel: Option[FileChannel] = None
   private var lastOffset: Option[Long] = None
 
@@ -67,11 +61,10 @@ class TransactionIndex(val startOffset: Long, @volatile private var _file: File)
   def updateParentDir(parentDir: File): Unit = _file = new File(parentDir, file.getName)
 
   /**
-   * Delete this index.
+   * 删除该索引。
    *
-   * @throws IOException if deletion fails due to an I/O error
-   * @return `true` if the file was deleted by this method; `false` if the file could not be deleted because it did
-   *         not exist
+   * @throws IOException 如果由于IO错误导致删除失败
+   * @return 如果使用此方法删除文件，则为“true”;如果文件不存在而无法删除，则为false
    */
   def deleteIfExists(): Boolean = {
     close()
@@ -94,7 +87,7 @@ class TransactionIndex(val startOffset: Long, @volatile private var _file: File)
   }
 
   /**
-   * Remove all the entries from the index. Unlike `AbstractIndex`, this index is not resized ahead of time.
+   * 从索引中删除所有条目。与“AbstractIndex”不同，此索引不会提前调整大小。
    */
   def reset(): Unit = {
     maybeChannel.foreach(_.truncate(0))
@@ -150,8 +143,7 @@ class TransactionIndex(val startOffset: Long, @volatile private var _file: File)
               nextEntry
             } catch {
               case e: IOException =>
-                // We received an unexpected error reading from the index file. We propagate this as an
-                // UNKNOWN error to the consumer, which will cause it to retry the fetch.
+                // 从索引中删除所有条目。与“AbstractIndex”不同，此索引不会提前调整大小。
                 throw new KafkaException(s"Failed to read from the transaction index ${file.getAbsolutePath}", e)
             }
           }
@@ -164,7 +156,7 @@ class TransactionIndex(val startOffset: Long, @volatile private var _file: File)
   }
 
   /**
-   * Collect all aborted transactions which overlap with a given fetch range.
+   * 收集与给定取范围重叠的所有终止事务。
    *
    * @param fetchOffset Inclusive first offset of the fetch range
    * @param upperBoundOffset Exclusive last offset in the fetch range
@@ -184,7 +176,7 @@ class TransactionIndex(val startOffset: Long, @volatile private var _file: File)
   }
 
   /**
-   * Do a basic sanity check on this index to detect obvious problems.
+   * 对该索引执行基本的完整性检查，以发现明显的问题。
    *
    * @throws CorruptIndexException if any problems are found.
    */

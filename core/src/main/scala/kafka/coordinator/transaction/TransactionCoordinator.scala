@@ -71,12 +71,10 @@ object TransactionCoordinator {
 }
 
 /**
- * Transaction coordinator handles message transactions sent by producers and communicate with brokers
- * to update ongoing transaction's status.
+ * 事务协调器处理由生产者发送的消息事务，并与代理通信以更新正在进行的事务状态。
  *
- * Each Kafka server instantiates a transaction coordinator which is responsible for a set of
- * producers. Producers with specific transactional ids are assigned to their corresponding coordinators;
- * Producers with no specific transactional id may talk to a random broker as their coordinators.
+ * 每个Kafka服务器实例化一个事务协调器，负责一组生产者。具有特定事务id的生产者被分配给相应的协调者;
+ * 没有特定事务id的生产者可以与随机代理作为其协调者进行对话。
  */
 class TransactionCoordinator(brokerId: Int,
                              txnConfig: TransactionConfig,
@@ -95,7 +93,7 @@ class TransactionCoordinator(brokerId: Int,
   type EndTxnCallback = Errors => Unit
   type ApiResult[T] = Either[Errors, T]
 
-  /* Active flag of the coordinator */
+  /* 协调器的活动标志 */
   private val isActive = new AtomicBoolean(false)
 
   val producerIdManager = createProducerIdManager()
@@ -107,16 +105,14 @@ class TransactionCoordinator(brokerId: Int,
                            requestLocal: RequestLocal = RequestLocal.NoCaching): Unit = {
 
     if (transactionalId == null) {
-      // if the transactional id is null, then always blindly accept the request
-      // and return a new producerId from the producerId manager
+      // 如果事务id为空，则总是盲目地接受请求，并从producerId管理器返回一个新的producerId
       val producerId = producerIdManager.generateProducerId()
       responseCallback(InitProducerIdResult(producerId, producerEpoch = 0, Errors.NONE))
     } else if (transactionalId.isEmpty) {
-      // if transactional id is empty then return error as invalid request. This is
-      // to make TransactionCoordinator's behavior consistent with producer client
+      // 如果事务id为空，则作为无效请求返回错误。这是为了使TransactionCoordinator的行为与生产者客户端保持一致
       responseCallback(initTransactionError(Errors.INVALID_REQUEST))
     } else if (!txnManager.validateTransactionTimeoutMs(transactionTimeoutMs)) {
-      // check transactionTimeoutMs is not larger than the broker configured maximum allowed value
+      // 检查transactionTimeoutMs不大于代理配置的最大允许值
       responseCallback(initTransactionError(Errors.INVALID_TRANSACTION_TIMEOUT))
     } else {
       val coordinatorEpochAndMetadata = txnManager.getTransactionState(transactionalId).flatMap {
@@ -153,7 +149,7 @@ class TransactionCoordinator(brokerId: Int,
 
         case Right((coordinatorEpoch, newMetadata)) =>
           if (newMetadata.txnState == PrepareEpochFence) {
-            // abort the ongoing transaction and then return CONCURRENT_TRANSACTIONS to let client wait and retry
+            // 中止正在进行的事务，然后返回CONCURRENT_TRANSACTIONS让客户端等待并重试
             def sendRetriableErrorCallback(error: Errors): Unit = {
               if (error != Errors.NONE) {
                 responseCallback(initTransactionError(error))
@@ -196,35 +192,31 @@ class TransactionCoordinator(brokerId: Int,
                                            expectedProducerIdAndEpoch: Option[ProducerIdAndEpoch]): ApiResult[(Int, TxnTransitMetadata)] = {
 
     def isValidProducerId(producerIdAndEpoch: ProducerIdAndEpoch): Boolean = {
-      // If a producer ID and epoch are provided by the request, fence the producer unless one of the following is true:
-      //   1. The producer epoch is equal to -1, which implies that the metadata was just created. This is the case of a
-      //      producer recovering from an UNKNOWN_PRODUCER_ID error, and it is safe to return the newly-generated
-      //      producer ID.
-      //   2. The expected producer ID matches the ID in current metadata (the epoch will be checked when we try to
-      //      increment it)
-      //   3. The expected producer ID matches the previous one and the expected epoch is exhausted, in which case this
-      //      could be a retry after a valid epoch bump that the producer never received the response for
+      // 如果请求中提供了生产者ID和epoch，除非下列情况之一为真，否则关闭生产者:
+      //   1. 生产者epoch等于-1，这意味着元数据刚刚创建。这是生产者从UNKNOWN_PRODUCER_ID错误中恢复的情况，并且返回新生成的生产者ID是安全的.
+      //   2. 预期的生产者ID与当前元数据中的ID匹配(当我们尝试增加epoch时将检查epoch)
+      //   3. 预期的生产者ID与前一个匹配，并且预期的epoch耗尽，在这种情况下，这可能是在生产者从未收到响应的有效epoch碰撞之后重试
       txnMetadata.producerEpoch == RecordBatch.NO_PRODUCER_EPOCH ||
         producerIdAndEpoch.producerId == txnMetadata.producerId ||
         (producerIdAndEpoch.producerId == txnMetadata.lastProducerId && TransactionMetadata.isEpochExhausted(producerIdAndEpoch.epoch))
     }
 
     if (txnMetadata.pendingTransitionInProgress) {
-      // return a retriable exception to let the client backoff and retry
+      // 返回一个可检索的异常，让客户端退出并重试
       Left(Errors.CONCURRENT_TRANSACTIONS)
     }
     else if (!expectedProducerIdAndEpoch.forall(isValidProducerId)) {
       Left(Errors.PRODUCER_FENCED)
     } else {
-      // caller should have synchronized on txnMetadata already
+      // 调用者应该已经在txnMetadata上同步了
       txnMetadata.state match {
         case PrepareAbort | PrepareCommit =>
-          // reply to client and let it backoff and retry
+          // 回复客户端，让客户端退回并重试
           Left(Errors.CONCURRENT_TRANSACTIONS)
 
         case CompleteAbort | CompleteCommit | Empty =>
           val transitMetadataResult =
-            // If the epoch is exhausted and the expected epoch (if provided) matches it, generate a new producer ID
+            // 如果epoch耗尽，并且预期的epoch(如果提供了)与之匹配，则生成一个新的生产者ID
             if (txnMetadata.isProducerEpochExhausted &&
                 expectedProducerIdAndEpoch.forall(_.epoch == txnMetadata.producerEpoch)) {
               val newProducerId = producerIdManager.generateProducerId()
@@ -241,11 +233,9 @@ class TransactionCoordinator(brokerId: Int,
           }
 
         case Ongoing =>
-          // indicate to abort the current ongoing txn first. Note that this epoch is never returned to the
-          // user. We will abort the ongoing transaction and return CONCURRENT_TRANSACTIONS to the client.
-          // This forces the client to retry, which will ensure that the epoch is bumped a second time. In
-          // particular, if fencing the current producer exhausts the available epochs for the current producerId,
-          // then when the client retries, we will generate a new producerId.
+          // 指示先中止当前正在进行的TXN。注意，这个epoch永远不会返回给用户。我们将中止正在进行的事务，
+          // 并将CONCURRENT_TRANSACTIONS返回给客户端。这将强制客户端重试，这将确保第二次碰撞epoch。特别是，
+          // 如果隔离当前生产者耗尽了当前生产者id的可用epoch，那么当客户端重试时，我们将生成一个新的生产者id。
           Right(coordinatorEpoch, txnMetadata.prepareFenceProducerEpoch())
 
         case Dead | PrepareEpochFence =>
@@ -328,8 +318,7 @@ class TransactionCoordinator(brokerId: Int,
       debug(s"Returning ${Errors.INVALID_REQUEST} error code to client for $transactionalId's AddPartitions request")
       responseCallback(Errors.INVALID_REQUEST)
     } else {
-      // try to update the transaction metadata and append the updated metadata to txn log;
-      // if there is no such metadata treat it as invalid producerId mapping error.
+      // 尝试更新事务元数据，并将更新后的元数据附加到TXN日志中;如果没有这样的元数据，将其视为无效的producerId映射错误。
       val result: ApiResult[(Int, TxnTransitMetadata)] = txnManager.getTransactionState(transactionalId).flatMap {
         case None => Left(Errors.INVALID_PRODUCER_ID_MAPPING)
 
@@ -337,19 +326,19 @@ class TransactionCoordinator(brokerId: Int,
           val coordinatorEpoch = epochAndMetadata.coordinatorEpoch
           val txnMetadata = epochAndMetadata.transactionMetadata
 
-          // generate the new transaction metadata with added partitions
+          // 生成带有添加分区的新事务元数据
           txnMetadata.inLock {
             if (txnMetadata.producerId != producerId) {
               Left(Errors.INVALID_PRODUCER_ID_MAPPING)
             } else if (txnMetadata.producerEpoch != producerEpoch) {
               Left(Errors.PRODUCER_FENCED)
             } else if (txnMetadata.pendingTransitionInProgress) {
-              // return a retriable exception to let the client backoff and retry
+              // 返回一个可检索的异常，让客户端退出并重试
               Left(Errors.CONCURRENT_TRANSACTIONS)
             } else if (txnMetadata.state == PrepareCommit || txnMetadata.state == PrepareAbort) {
               Left(Errors.CONCURRENT_TRANSACTIONS)
             } else if (txnMetadata.state == Ongoing && partitions.subsetOf(txnMetadata.topicPartitions)) {
-              // this is an optimization: if the partitions are already in the metadata reply OK immediately
+              // 这是一个优化:如果分区已经在元数据中，立即回复OK
               Left(Errors.NONE)
             } else {
               Right(coordinatorEpoch, txnMetadata.prepareAddPartitions(partitions.toSet, time.milliseconds()))
@@ -370,29 +359,27 @@ class TransactionCoordinator(brokerId: Int,
   }
 
   /**
-   * Load state from the given partition and begin handling requests for groups which map to this partition.
+   * 从给定分区加载状态，并开始处理映射到该分区的组的请求。
    *
-   * @param txnTopicPartitionId The partition that we are now leading
-   * @param coordinatorEpoch The partition coordinator (or leader) epoch from the received LeaderAndIsr request
+   * @param txnTopicPartitionId 我们现在领导的分裂
+   * @param coordinatorEpoch 来自收到的leaderanddisr请求的分区协调器(或leader) epoch
    */
   def onElection(txnTopicPartitionId: Int, coordinatorEpoch: Int): Unit = {
     info(s"Elected as the txn coordinator for partition $txnTopicPartitionId at epoch $coordinatorEpoch")
-    // The operations performed during immigration must be resilient to any previous errors we saw or partial state we
-    // left off during the unloading phase. Ensure we remove all associated state for this partition before we continue
-    // loading it.
+    // 在迁移期间执行的操作必须能够适应我们在卸载阶段看到的任何先前的错误或我们留下的部分状态。确保在继续加载该分区之前删除了
+    // 该分区的所有相关状态。
     txnMarkerChannelManager.removeMarkersForTxnTopicPartition(txnTopicPartitionId)
 
-    // Now load the partition.
+    // 现在加载分区。
     txnManager.loadTransactionsForTxnTopicPartition(txnTopicPartitionId, coordinatorEpoch,
       txnMarkerChannelManager.addTxnMarkersToSend)
   }
 
   /**
-   * Clear coordinator caches for the given partition after giving up leadership.
+   * 在放弃领导后，清除给定分区的协调器缓存。
    *
    * @param txnTopicPartitionId The partition that we are no longer leading
-   * @param coordinatorEpoch The partition coordinator (or leader) epoch, which may be absent if we
-   *                         are resigning after receiving a StopReplica request from the controller
+   * @param coordinatorEpoch 分区协调器(或leader) epoch，如果我们在接收到来自控制器的StopReplica请求后退出，该epoch可能不存在
    */
   def onResignation(txnTopicPartitionId: Int, coordinatorEpoch: Option[Int]): Unit = {
     info(s"Resigned as the txn coordinator for partition $txnTopicPartitionId at epoch $coordinatorEpoch")
@@ -450,7 +437,7 @@ class TransactionCoordinator(brokerId: Int,
           txnMetadata.inLock {
             if (txnMetadata.producerId != producerId)
               Left(Errors.INVALID_PRODUCER_ID_MAPPING)
-            // Strict equality is enforced on the client side requests, as they shouldn't bump the producer epoch.
+            // 在客户端请求中强制执行严格的平等，因为它们不应该碰到制作人时代。
             else if ((isFromClient && producerEpoch != txnMetadata.producerEpoch) || producerEpoch < txnMetadata.producerEpoch)
               Left(Errors.PRODUCER_FENCED)
             else if (txnMetadata.pendingTransitionInProgress && txnMetadata.pendingState.get != PrepareEpochFence)
@@ -463,8 +450,7 @@ class TransactionCoordinator(brokerId: Int,
                   PrepareAbort
 
                 if (nextState == PrepareAbort && txnMetadata.pendingState.contains(PrepareEpochFence)) {
-                  // We should clear the pending state to make way for the transition to PrepareAbort and also bump
-                  // the epoch in the transaction metadata we are about to append.
+                  // 我们应该清除挂起状态，以便为转换到PrepareAbort让路，并在我们即将追加的事务元数据中撞击epoch。
                   isEpochFence = true
                   txnMetadata.pendingState = None
                   txnMetadata.producerEpoch = producerEpoch
@@ -563,8 +549,7 @@ class TransactionCoordinator(brokerId: Int,
                   responseCallback(err)
 
                 case Right((txnMetadata, newPreSendMetadata)) =>
-                  // we can respond to the client immediately and continue to write the txn markers if
-                  // the log append was successful
+                  // 如果日志追加成功，我们可以立即响应客户机并继续写入TXN标记
                   responseCallback(Errors.NONE)
 
                   txnMarkerChannelManager.addTxnMarkersToSend(coordinatorEpoch, txnMarkerResult, txnMetadata, newPreSendMetadata)
@@ -659,7 +644,7 @@ class TransactionCoordinator(brokerId: Int,
   }
 
   /**
-   * Startup logic executed at the same time when the server starts up.
+   * 启动逻辑在服务器启动时同时执行。
    */
   def startup(retrieveTransactionTopicPartitionCount: () => Int, enableTransactionalIdExpiration: Boolean = true): Unit = {
     info("Starting up.")
@@ -677,8 +662,7 @@ class TransactionCoordinator(brokerId: Int,
   }
 
   /**
-   * Shutdown logic executed at the same time when server shuts down.
-   * Ordering of actions should be reversed from the startup process.
+   * 在服务器关闭的同时执行关机逻辑。动作的顺序应该从启动过程中颠倒过来。
    */
   def shutdown(): Unit = {
     info("Shutting down.")

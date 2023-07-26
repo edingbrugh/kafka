@@ -30,32 +30,30 @@ import scala.collection.mutable
 import scala.jdk.CollectionConverters._
 
 /**
- * Messages stored for the transaction topic represent the producer id and transactional status of the corresponding
- * transactional id, which have versions for both the key and value fields. Key and value
- * versions are used to evolve the message formats:
+ * 为事务主题存储的消息表示相应事务id的生产者id和事务状态，它们具有键和值字段的版本。键和值版本用于改进消息格式:
  *
  * key version 0:               [transactionalId]
  *    -> value version 0:       [producer_id, producer_epoch, expire_timestamp, status, [topic, [partition] ], timestamp]
  */
 object TransactionLog {
 
-  // log-level config default values and enforced values
+  // 日志级别的配置默认值和强制值
   val DefaultNumPartitions: Int = 50
   val DefaultSegmentBytes: Int = 100 * 1024 * 1024
   val DefaultReplicationFactor: Short = 3.toShort
   val DefaultMinInSyncReplicas: Int = 2
   val DefaultLoadBufferSize: Int = 5 * 1024 * 1024
 
-  // enforce always using
+  // 强制使用
   //  1. cleanup policy = compact
   //  2. compression = none
   //  3. unclean leader election = disabled
-  //  4. required acks = -1 when writing
+  //  4. 写入时所需ack = -1
   val EnforcedCompressionType: CompressionType = CompressionType.NONE
   val EnforcedRequiredAcks: Short = (-1).toShort
 
   /**
-    * Generates the bytes for transaction log message key
+    * 为事务日志消息密钥生成字节
     *
     * @return key bytes
     */
@@ -65,7 +63,7 @@ object TransactionLog {
   }
 
   /**
-    * Generates the payload bytes for transaction log message value
+    * 生成事务日志消息值的有效负载字节
     *
     * @return value payload bytes
     */
@@ -94,7 +92,7 @@ object TransactionLog {
   }
 
   /**
-    * Decodes the transaction log messages' key
+    * 解码事务日志消息的密钥
     *
     * @return the key
     */
@@ -110,7 +108,7 @@ object TransactionLog {
   }
 
   /**
-    * Decodes the transaction log messages' payload and retrieves the transaction metadata from it
+    * 解码事务日志消息的有效负载并从中检索事务元数据
     *
     * @return a transaction metadata object from the message
     */
@@ -145,7 +143,7 @@ object TransactionLog {
     }
   }
 
-  // Formatter for use with tools to read transaction log messages
+  // 格式化程序，用于与读取事务日志消息的工具一起使用
   class TransactionLogMessageFormatter extends MessageFormatter {
     def writeTo(consumerRecord: ConsumerRecord[Array[Byte], Array[Byte]], output: PrintStream): Unit = {
       Option(consumerRecord.key).map(key => readTxnRecordKey(ByteBuffer.wrap(key))).foreach { txnKey =>
@@ -164,7 +162,7 @@ object TransactionLog {
   }
 
   /**
-   * Exposed for printing records using [[kafka.tools.DumpLogSegments]]
+   * 曝光供打印记录使用 [[kafka.tools.DumpLogSegments]]
    */
   def formatRecordKeyAndValue(record: Record): (Option[String], Option[String]) = {
     val txnKey = TransactionLog.readTxnRecordKey(record.key)

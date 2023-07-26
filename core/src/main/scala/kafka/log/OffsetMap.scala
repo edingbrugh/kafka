@@ -35,8 +35,8 @@ trait OffsetMap {
 }
 
 /**
- * An hash table used for deduplicating the log. This hash table uses a cryptographicly secure hash of the key as a proxy for the key
- * for comparisons and to save space on object overhead. Collisions are resolved by probing. This hash table does not support deletes.
+ * 用于重复数据删除的哈希表。此哈希表使用密钥的加密安全哈希作为密钥的代理进行比较，并节省对象开销的空间。
+ * 碰撞是通过探测解决的。这个哈希表不支持删除。
  * @param memory The amount of memory this map can use
  * @param hashAlgorithm The hash algorithm instance to use: MD2, MD5, SHA-1, SHA-256, SHA-384, SHA-512
  */
@@ -77,7 +77,7 @@ class SkimpyOffsetMap(val memory: Int, val hashAlgorithm: String = "MD5") extend
   val slots: Int = memory / bytesPerEntry
   
   /**
-   * Associate this offset to the given key.
+   * 将此偏移量与给定的键关联。
    * @param key The key
    * @param offset The offset
    */
@@ -85,14 +85,14 @@ class SkimpyOffsetMap(val memory: Int, val hashAlgorithm: String = "MD5") extend
     require(entries < slots, "Attempt to add a new entry to a full offset map.")
     lookups += 1
     hashInto(key, hash1)
-    // probe until we find the first empty slot
+    // 探测直到找到第一个空槽
     var attempt = 0
     var pos = positionOf(hash1, attempt)  
     while(!isEmpty(pos)) {
       bytes.position(pos)
       bytes.get(hash2)
       if(Arrays.equals(hash1, hash2)) {
-        // we found an existing entry, overwrite it and return (size does not change)
+        // 我们找到一个现有的条目，覆盖它并返回(大小不变)
         bytes.putLong(offset)
         lastOffset = offset
         return
@@ -100,7 +100,7 @@ class SkimpyOffsetMap(val memory: Int, val hashAlgorithm: String = "MD5") extend
       attempt += 1
       pos = positionOf(hash1, attempt)
     }
-    // found an empty slot, update it--size grows by 1
+    // 找到一个空槽，更新它——大小增加1
     bytes.position(pos)
     bytes.put(hash1)
     bytes.putLong(offset)
@@ -109,24 +109,23 @@ class SkimpyOffsetMap(val memory: Int, val hashAlgorithm: String = "MD5") extend
   }
   
   /**
-   * Check that there is no entry at the given position
+   * 检查在给定位置是否没有入口
    */
   private def isEmpty(position: Int): Boolean = 
     bytes.getLong(position) == 0 && bytes.getLong(position + 8) == 0 && bytes.getLong(position + 16) == 0
 
   /**
-   * Get the offset associated with this key.
+   * 获取与此键关联的偏移量。
    * @param key The key
    * @return The offset associated with this key or -1 if the key is not found
    */
   override def get(key: ByteBuffer): Long = {
     lookups += 1
     hashInto(key, hash1)
-    // search for the hash of this key by repeated probing until we find the hash we are looking for or we find an empty slot
+    // 通过重复探测来搜索这个键的哈希值，直到找到我们要找的哈希值或者找到一个空槽
     var attempt = 0
     var pos = 0
-    //we need to guard against attempt integer overflow if the map is full
-    //limit attempt to number of slots once positionOf(..) enters linear search mode
+    // 如果映射已满，我们需要防止尝试整数溢出，一旦positionOf(..)进入线性搜索模式，限制尝试槽数
     val maxAttempts = slots + hashSize - 4
     do {
      if(attempt >= maxAttempts)
@@ -142,7 +141,7 @@ class SkimpyOffsetMap(val memory: Int, val hashAlgorithm: String = "MD5") extend
   }
   
   /**
-   * Change the salt used for key hashing making all existing keys unfindable.
+   * 更改用于密钥散列的盐，使所有现有密钥都无法找到。
    */
   override def clear(): Unit = {
     this.entries = 0
@@ -173,8 +172,7 @@ class SkimpyOffsetMap(val memory: Int, val hashAlgorithm: String = "MD5") extend
   }
 
   /**
-   * Calculate the ith probe position. We first try reading successive integers from the hash itself
-   * then if all of those fail we degrade to linear probing.
+   * 计算第i个探头位置。我们首先尝试从哈希本身读取连续整数，如果所有这些都失败了，我们降级为线性探测。
    * @param hash The hash of the key to find the position for
    * @param attempt The ith probe
    * @return The byte offset in the buffer at which the ith probing for the given hash would reside
