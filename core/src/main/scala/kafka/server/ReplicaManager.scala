@@ -66,7 +66,7 @@ import scala.collection.{Map, Seq, Set, mutable}
 import scala.compat.java8.OptionConverters._
 
 /*
- * Result metadata of a log append operation on the log
+ * 日志追加操作的结果元数据
  */
 case class LogAppendResult(info: LogAppendInfo, exception: Option[Throwable] = None) {
   def error: Errors = exception match {
@@ -228,7 +228,7 @@ class ReplicaManager(val config: KafkaConfig,
       threadNamePrefix, alterIsrManager)
   }
 
-  /* epoch of the controller that last changed the leader */
+  /* 控制器的纪元最后一次改变了领导者 */
   @volatile private[server] var controllerEpoch: Int = KafkaController.InitialControllerEpoch
   protected val localBrokerId = config.brokerId
   protected val allPartitions = new Pool[TopicPartition, HostedPartition](
@@ -313,7 +313,7 @@ class ReplicaManager(val config: KafkaConfig,
       case online: HostedPartition.Online => topic == online.partition.topic
       case HostedPartition.None | HostedPartition.Offline => false
     }
-    if (!topicHasNonOfflinePartition) // nothing online or deferred
+    if (!topicHasNonOfflinePartition)
       brokerTopicStats.removeMetrics(topic)
   }
 
