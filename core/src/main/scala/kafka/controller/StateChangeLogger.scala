@@ -25,9 +25,8 @@ object StateChangeLogger {
 }
 
 /**
- * Simple class that sets `logIdent` appropriately depending on whether the state change logger is being used in the
- * context of the KafkaController or not (e.g. ReplicaManager and MetadataCache log to the state change logger
- * irrespective of whether the broker is the Controller).
+ * 一个简单的类，根据状态更改记录器是否在kafkaController的上下文中被使用来适当地设置' logIdent '
+ * (例如，ReplicaManager和MetadataCache记录到状态更改记录器，而不管代理是否是控制器)。
  */
 class StateChangeLogger(brokerId: Int, inControllerContext: Boolean, controllerEpoch: Option[Int]) extends Logging {
 

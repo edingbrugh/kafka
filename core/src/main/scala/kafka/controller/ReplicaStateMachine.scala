@@ -315,17 +315,15 @@ class ZkReplicaStateMachine(config: KafkaConfig,
   }
 
   /**
-   * Try to remove a replica from the isr of multiple partitions.
-   * Removing a replica from isr updates partition state in zookeeper.
+   * 尝试从多个分区的isr中删除副本。从isr中删除副本将更新zookeeper中的分区状态。
    *
-   * @param replicaId The replica being removed from isr of multiple partitions
-   * @param partitions The partitions from which we're trying to remove the replica from isr
-   * @return A tuple of two elements:
-   *         1. The updated Right[LeaderIsrAndControllerEpochs] of all partitions for which we successfully
-   *         removed the replica from isr. Or Left[Exception] corresponding to failed removals that should
-   *         not be retried
-   *         2. The partitions that we should retry due to a zookeeper BADVERSION conflict. Version conflicts can occur if
-   *         the partition leader updated partition state while the controller attempted to update partition state.
+   * @param replicaId 从多个分区的isr中删除的副本
+   * @param partitions 我们试图从isr中删除副本的分区
+   * @return 包含两个元素的元组:
+   *         1. 我们从isr中成功删除副本的所有分区的更新的Right[LeaderIsrAndControllerEpochs]。
+   *         或者Left[Exception]对应于不应该重试的删除失败
+   *         2. 由于zookeeper BADVERSION冲突，我们应该重试的分区。如果分区领导者更新分区状态，而控制器试图更新分区状态，
+   *         则可能发生版本冲突。
    */
   private def doRemoveReplicasFromIsr(
     replicaId: Int,
@@ -374,7 +372,7 @@ class ZkReplicaStateMachine(config: KafkaConfig,
   }
 
   /**
-   * Gets the partition state from zookeeper
+   * 从zookeeper获取分区状态
    * @param partitions the partitions whose state we want from zookeeper
    * @return A tuple of two values:
    *         1. The Right(LeaderAndIsrs) of partitions whose state we successfully read from zookeeper.
