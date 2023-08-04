@@ -51,7 +51,7 @@ import static org.apache.kafka.common.record.RecordBatch.MAGIC_VALUE_V2;
 import static org.apache.kafka.common.record.RecordBatch.NO_TIMESTAMP;
 
 /**
- *  正在发送或将要发送的一批记录。这个类不是线程安全的，在修改它时必须使用外部同步
+ *  正在发送或将要发送的一批记录。这个类不是线程安全的，在修改它时必须使用同步锁
  */
 public final class ProducerBatch {
 
