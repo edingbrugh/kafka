@@ -65,10 +65,9 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 /**
- * A network client for asynchronous request/response network i/o. This is an internal class used to implement the
- * user-facing producer and consumer clients.
+ * 用于异步请求响应网络io的网络客户端。这是一个内部类，用于实现面向用户的生产者和消费者客户端。
  * <p>
- * This class is not thread-safe!
+ * 这个类不是线程安全的!
  */
 public class NetworkClient implements KafkaClient {
 
@@ -80,41 +79,41 @@ public class NetworkClient implements KafkaClient {
 
     private final Logger log;
 
-    /* the selector used to perform network i/o */
+    /* 用于执行网络IO的选择器 */
     private final Selectable selector;
 
     private final MetadataUpdater metadataUpdater;
 
     private final Random randOffset;
 
-    /* the state of each node's connection */
+    /* 每个节点的连接状态 */
     private final ClusterConnectionStates connectionStates;
 
-    /* the set of requests currently being sent or awaiting a response */
+    /* 当前正在发送或等待响应的请求集 */
     private final InFlightRequests inFlightRequests;
 
-    /* the socket send buffer size in bytes */
+    /* 套接字发送缓冲区大小(以字节为单位) */
     private final int socketSendBuffer;
 
-    /* the socket receive size buffer in bytes */
+    /* 套接字接收缓冲区大小(以字节为单位) */
     private final int socketReceiveBuffer;
 
-    /* the client id used to identify this client in requests to the server */
+    /* 客户端id，用于在向服务器发出的请求中标识该客户端 */
     private final String clientId;
 
-    /* the current correlation id to use when sending requests to servers */
+    /* 向服务器发送请求时要使用的当前关联id */
     private int correlation;
 
-    /* default timeout for individual requests to await acknowledgement from servers */
+    /* 等待服务器确认的单个请求的默认超时 */
     private final int defaultRequestTimeoutMs;
 
-    /* time in ms to wait before retrying to create connection to a server */
+    /* 在重试创建到服务器的连接之前等待的时间(以毫秒为单位) */
     private final long reconnectBackoffMs;
 
     private final Time time;
 
     /**
-     * True if we should send an ApiVersionRequest when first connecting to a broker.
+     * 如果我们应该在第一次连接到代理时发送ApiVersionRequest，则为True。
      */
     private final boolean discoverBrokerVersions;
 

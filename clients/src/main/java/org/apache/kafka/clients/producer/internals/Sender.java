@@ -72,52 +72,51 @@ public class Sender implements Runnable {
 
     private final Logger log;
 
-    /* the state of each nodes connection */
+    /* 每个节点的连接状态 */
     private final KafkaClient client;
 
-    /* the record accumulator that batches records */
+    /* 对记录进行批量处理的记录累加器 */
     private final RecordAccumulator accumulator;
 
-    /* the metadata for the client */
+    /* 客户端的元数据 */
     private final ProducerMetadata metadata;
 
-    /* the flag indicating whether the producer should guarantee the message order on the broker or not. */
+    /* 指示生产者是否应该保证代理上的消息顺序的标志。 */
     private final boolean guaranteeMessageOrder;
 
-    /* the maximum request size to attempt to send to the server */
+    /* 尝试发送到服务器的最大请求大小 */
     private final int maxRequestSize;
 
-    /* the number of acknowledgements to request from the server */
+    /* 要从服务器请求的确认次数 */
     private final short acks;
 
-    /* the number of times to retry a failed request before giving up */
+    /* 在放弃之前重试失败请求的次数 */
     private final int retries;
 
-    /* the clock instance used for getting the time */
+    /* 用于获取时间的时钟实例 */
     private final Time time;
 
-    /* true while the sender thread is still running */
     private volatile boolean running;
 
-    /* true when the caller wants to ignore all unsent/inflight messages and force close.  */
+    /* 当调用者想要忽略所有未发送的消息并强制关闭时，为True。  */
     private volatile boolean forceClose;
 
-    /* metrics */
+    /* 指标 */
     private final SenderMetrics sensors;
 
-    /* the max time to wait for the server to respond to the request*/
+    /* 等待服务器响应请求的最大时间 */
     private final int requestTimeoutMs;
 
-    /* The max time to wait before retrying a request which has failed */
+    /* 重试失败请求之前等待的最大时间 */
     private final long retryBackoffMs;
 
-    /* current request API versions supported by the known brokers */
+    /* 已知代理支持的当前请求API版本 */
     private final ApiVersions apiVersions;
 
-    /* all the state related to transactions, in particular the producer id, producer epoch, and sequence numbers */
+    /* 与事务相关的所有状态，特别是生产者id、生产者纪元和序列号 */
     private final TransactionManager transactionManager;
 
-    // A per-partition queue of batches ordered by creation time for tracking the in-flight batches
+    // 按创建时间排序的批的每个分区队列，用于跟踪正在运行的批
     private final Map<TopicPartition, List<ProducerBatch>> inFlightBatches;
 
     public Sender(LogContext logContext,

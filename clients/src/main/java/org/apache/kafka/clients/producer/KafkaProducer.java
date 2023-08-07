@@ -77,6 +77,7 @@ import org.slf4j.Logger;
 import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -535,29 +536,16 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
     }
 
     /**
-     * Needs to be called before any other methods when the transactional.id is set in the configuration.
+     * 事务处理时需要在任何其他方法之前调用。Id是在配置中设置的。
      *
-     * This method does the following:
-     *   1. Ensures any transactions initiated by previous instances of the producer with the same
-     *      transactional.id are completed. If the previous instance had failed with a transaction in
-     *      progress, it will be aborted. If the last transaction had begun completion,
-     *      but not yet finished, this method awaits its completion.
-     *   2. Gets the internal producer id and epoch, used in all future transactional
-     *      messages issued by the producer.
+     * 这个方法的作用如下:
+     *   1. 确保由生成器的前一个实例发起的所有事务都具有相同的事务。完成。如果前一个实例在一个正在进行的事务中失败，它将被中止。
+     *      如果最后一个事务已经开始完成，但尚未完成，则此方法等待其完成。
+     *   2. 获取内部生产者id和epoch，在生产者发出的所有未来事务消息中使用。
      *
-     * Note that this method will raise {@link TimeoutException} if the transactional state cannot
-     * be initialized before expiration of {@code max.block.ms}. Additionally, it will raise {@link InterruptException}
-     * if interrupted. It is safe to retry in either case, but once the transactional state has been successfully
-     * initialized, this method should no longer be used.
+     * 注意，此方法将引发 {@link TimeoutException} 如果事务状态不能在{@code max.block.ms}到期之前初始化。此外，它将提高
+     * {@link InterruptException}如果中断。在任何一种情况下重试都是安全的，但是一旦成功初始化了事务状态，就不应该再使用此方法。
      *
-     * @throws IllegalStateException if no transactional.id has been configured
-     * @throws org.apache.kafka.common.errors.UnsupportedVersionException fatal error indicating the broker
-     *         does not support transactions (i.e. if its version is lower than 0.11.0.0)
-     * @throws org.apache.kafka.common.errors.AuthorizationException fatal error indicating that the configured
-     *         transactional.id is not authorized. See the exception for more details
-     * @throws KafkaException if the producer has encountered a previous fatal error or for any other unexpected error
-     * @throws TimeoutException if the time taken for initialize the transaction has surpassed <code>max.block.ms</code>.
-     * @throws InterruptException if the thread is interrupted while blocked
      */
     public void initTransactions() {
         throwIfNoTransactionManager();
@@ -568,19 +556,8 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
     }
 
     /**
-     * Should be called before the start of each new transaction. Note that prior to the first invocation
-     * of this method, you must invoke {@link #initTransactions()} exactly one time.
+     * 应该在每个新事务开始之前调用。注意，在第一次调用此方法之前，必须调用 {@link #initTransactions()} 正好是一次。
      *
-     * @throws IllegalStateException if no transactional.id has been configured or if {@link #initTransactions()}
-     *         has not yet been invoked
-     * @throws ProducerFencedException if another producer with the same transactional.id is active
-     * @throws org.apache.kafka.common.errors.InvalidProducerEpochException if the producer has attempted to produce with an old epoch
-     *         to the partition leader. See the exception for more details
-     * @throws org.apache.kafka.common.errors.UnsupportedVersionException fatal error indicating the broker
-     *         does not support transactions (i.e. if its version is lower than 0.11.0.0)
-     * @throws org.apache.kafka.common.errors.AuthorizationException fatal error indicating that the configured
-     *         transactional.id is not authorized. See the exception for more details
-     * @throws KafkaException if the producer has encountered a previous fatal error or for any other unexpected error
      */
     public void beginTransaction() throws ProducerFencedException {
         throwIfNoTransactionManager();
@@ -589,32 +566,13 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
     }
 
     /**
-     * Sends a list of specified offsets to the consumer group coordinator, and also marks
-     * those offsets as part of the current transaction. These offsets will be considered
-     * committed only if the transaction is committed successfully. The committed offset should
-     * be the next message your application will consume, i.e. lastProcessedMessageOffset + 1.
+     * 向消费者组协调器发送指定偏移量的列表，并将这些偏移量标记为当前事务的一部分。只有当事务成功提交时，这些补偿才会被视为已提交。
+     * 提交的偏移量应该是应用程序将使用的下一个消息，即lastProcessedMessageOffset + 1。
      * <p>
-     * This method should be used when you need to batch consumed and produced messages
-     * together, typically in a consume-transform-produce pattern. Thus, the specified
-     * {@code consumerGroupId} should be the same as config parameter {@code group.id} of the used
-     * {@link KafkaConsumer consumer}. Note, that the consumer should have {@code enable.auto.commit=false}
-     * and should also not commit offsets manually (via {@link KafkaConsumer#commitSync(Map) sync} or
+     * 当您需要批量处理消费和产生的消息时，应该使用此方法，通常是在消费-转换-产生模式中。因此，指定的{@code consumerGroupId}
+     * 应该与配置参数相同吗 {@code group.id} 使用的{@link KafkaConsumer Consumer}。注意，消费者应该有{@code enable.auto.commit=false}
+     * 也不应该手动提交偏移量 (via {@link KafkaConsumer#commitSync(Map) sync} or
      * {@link KafkaConsumer#commitAsync(Map, OffsetCommitCallback) async} commits).
-     *
-     * @throws IllegalStateException if no transactional.id has been configured, no transaction has been started
-     * @throws ProducerFencedException fatal error indicating another producer with the same transactional.id is active
-     * @throws org.apache.kafka.common.errors.UnsupportedVersionException fatal error indicating the broker
-     *         does not support transactions (i.e. if its version is lower than 0.11.0.0)
-     * @throws org.apache.kafka.common.errors.UnsupportedForMessageFormatException fatal error indicating the message
-     *         format used for the offsets topic on the broker does not support transactions
-     * @throws org.apache.kafka.common.errors.AuthorizationException fatal error indicating that the configured
-     *         transactional.id is not authorized, or the consumer group id is not authorized.
-     * @throws org.apache.kafka.common.errors.InvalidProducerEpochException if the producer has attempted to produce with an old epoch
-     *         to the partition leader. See the exception for more details
-     * @throws KafkaException if the producer has encountered a previous fatal or abortable error, or for any
-     *         other unexpected error
-     *
-     * @deprecated Since 3.0.0, please use {@link #sendOffsetsToTransaction(Map, ConsumerGroupMetadata)} instead.
      */
     @Deprecated
     public void sendOffsetsToTransaction(Map<TopicPartition, OffsetAndMetadata> offsets,
@@ -623,46 +581,21 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
     }
 
     /**
-     * Sends a list of specified offsets to the consumer group coordinator, and also marks
-     * those offsets as part of the current transaction. These offsets will be considered
-     * committed only if the transaction is committed successfully. The committed offset should
-     * be the next message your application will consume, i.e. lastProcessedMessageOffset + 1.
+     * 向消费者组协调器发送指定偏移量的列表，并将这些偏移量标记为当前事务的一部分。只有当事务成功提交时，这些补偿才会被视为已提交。
+     * 提交的偏移量应该是应用程序将使用的下一个消息，即lastProcessedMessageOffset + 1。
      * <p>
-     * This method should be used when you need to batch consumed and produced messages
-     * together, typically in a consume-transform-produce pattern. Thus, the specified
-     * {@code groupMetadata} should be extracted from the used {@link KafkaConsumer consumer} via
-     * {@link KafkaConsumer#groupMetadata()} to leverage consumer group metadata. This will provide
-     * stronger fencing than just supplying the {@code consumerGroupId} and passing in {@code new ConsumerGroupMetadata(consumerGroupId)},
-     * however note that the full set of consumer group metadata returned by {@link KafkaConsumer#groupMetadata()}
-     * requires the brokers to be on version 2.5 or newer to understand.
+     * 当您需要批量处理消费和产生的消息时，应该使用此方法，通常是在消费-转换-产生模式中。因此，指定的{@code groupMetadata}应该从使用的
+     * {@link KafkaConsumer consumer} 通过
+     * {@link KafkaConsumer#groupMetadata()} 利用消费者组元数据。这将提供更强大的防护，而不仅仅是提供 {@code consumerGroupId}
+     * 然后进来 {@code new ConsumerGroupMetadata(consumerGroupId)},返回的消费者组元数据的完整集合{@link KafkaConsumer#groupMetadata()}
+     * 需要代理使用2.5或更新版本才能理解。
      *
      * <p>
-     * Note, that the consumer should have {@code enable.auto.commit=false} and should
-     * also not commit offsets manually (via {@link KafkaConsumer#commitSync(Map) sync} or
+     * 注意，消费者应该有{@code enable.auto.commit=false}，也不应该手动提交偏移量 (via {@link KafkaConsumer#commitSync(Map) sync} or
      * {@link KafkaConsumer#commitAsync(Map, OffsetCommitCallback) async} commits).
-     * This method will raise {@link TimeoutException} if the producer cannot send offsets before expiration of {@code max.block.ms}.
-     * Additionally, it will raise {@link InterruptException} if interrupted.
+     * 这个方法将会 {@link TimeoutException} 如果生产者不能在{@code max.block.ms}过期前发送偏移量。此外，它将提高 {@link InterruptException}
+     * 如果中断。
      *
-     * @throws IllegalStateException if no transactional.id has been configured or no transaction has been started.
-     * @throws ProducerFencedException fatal error indicating another producer with the same transactional.id is active
-     * @throws org.apache.kafka.common.errors.UnsupportedVersionException fatal error indicating the broker
-     *         does not support transactions (i.e. if its version is lower than 0.11.0.0) or
-     *         the broker doesn't support latest version of transactional API with all consumer group metadata
-     *         (i.e. if its version is lower than 2.5.0).
-     * @throws org.apache.kafka.common.errors.UnsupportedForMessageFormatException fatal error indicating the message
-     *         format used for the offsets topic on the broker does not support transactions
-     * @throws org.apache.kafka.common.errors.AuthorizationException fatal error indicating that the configured
-     *         transactional.id is not authorized, or the consumer group id is not authorized.
-     * @throws org.apache.kafka.clients.consumer.CommitFailedException if the commit failed and cannot be retried
-     *         (e.g. if the consumer has been kicked out of the group). Users should handle this by aborting the transaction.
-     * @throws org.apache.kafka.common.errors.FencedInstanceIdException if this producer instance gets fenced by broker due to a
-     *                                                                  mis-configured consumer instance id within group metadata.
-     * @throws org.apache.kafka.common.errors.InvalidProducerEpochException if the producer has attempted to produce with an old epoch
-     *         to the partition leader. See the exception for more details
-     * @throws KafkaException if the producer has encountered a previous fatal or abortable error, or for any
-     *         other unexpected error
-     * @throws TimeoutException if the time taken for sending offsets has surpassed max.block.ms.
-     * @throws InterruptException if the thread is interrupted while blocked
      */
     public void sendOffsetsToTransaction(Map<TopicPartition, OffsetAndMetadata> offsets,
                                          ConsumerGroupMetadata groupMetadata) throws ProducerFencedException {
@@ -675,29 +608,15 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
     }
 
     /**
-     * Commits the ongoing transaction. This method will flush any unsent records before actually committing the transaction.
+     * 提交正在进行的事务。此方法将在实际提交事务之前刷新所有未发送的记录
      *
-     * Further, if any of the {@link #send(ProducerRecord)} calls which were part of the transaction hit irrecoverable
-     * errors, this method will throw the last received exception immediately and the transaction will not be committed.
-     * So all {@link #send(ProducerRecord)} calls in a transaction must succeed in order for this method to succeed.
-     *
-     * Note that this method will raise {@link TimeoutException} if the transaction cannot be committed before expiration
-     * of {@code max.block.ms}. Additionally, it will raise {@link InterruptException} if interrupted.
-     * It is safe to retry in either case, but it is not possible to attempt a different operation (such as abortTransaction)
-     * since the commit may already be in the progress of completing. If not retrying, the only option is to close the producer.
-     *
-     * @throws IllegalStateException if no transactional.id has been configured or no transaction has been started
-     * @throws ProducerFencedException fatal error indicating another producer with the same transactional.id is active
-     * @throws org.apache.kafka.common.errors.UnsupportedVersionException fatal error indicating the broker
-     *         does not support transactions (i.e. if its version is lower than 0.11.0.0)
-     * @throws org.apache.kafka.common.errors.AuthorizationException fatal error indicating that the configured
-     *         transactional.id is not authorized. See the exception for more details
-     * @throws org.apache.kafka.common.errors.InvalidProducerEpochException if the producer has attempted to produce with an old epoch
-     *         to the partition leader. See the exception for more details
-     * @throws KafkaException if the producer has encountered a previous fatal or abortable error, or for any
-     *         other unexpected error
-     * @throws TimeoutException if the time taken for committing the transaction has surpassed <code>max.block.ms</code>.
-     * @throws InterruptException if the thread is interrupted while blocked
+     * 此外，如果任何 {@link #send(ProducerRecord)}
+     * 作为事务一部分的调用遇到不可恢复的错误，此方法将立即抛出最后接收到的异常，并且不会提交事务。因此，
+     * 事务中的所有{@link #send(ProducerRecord)}调用必须成功才能使该方法成功。
+
+     * 注意，如果事务不能在{@code max.block.ms}到期之前提交，此方法将引发{@link TimeoutException}。
+     * 此外，如果中断，它将引发{@link InterruptException}。在这两种情况下重试都是安全的，但不可能尝试不同的操作(例如abortTransaction)，
+     * 因为提交可能已经处于完成的过程中。如果不重试，唯一的选择是关闭生产者。
      */
     public void commitTransaction() throws ProducerFencedException {
         throwIfNoTransactionManager();
@@ -714,18 +633,6 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
      * 注意，此方法将引发 {@link TimeoutException} 如果在到期之前无法终止事务 {@code max.block.ms}. 此外，它将提高{@link InterruptException}
      * 如果中断。在任何一种情况下重试都是安全的，但不可能尝试不同的操作(例如commitTransaction)，因为中止可能已经处于完成的过程中。
      * 如果不重试，唯一的选择是关闭生产者。
-     *
-     * @throws IllegalStateException if no transactional.id has been configured or no transaction has been started
-     * @throws ProducerFencedException fatal error indicating another producer with the same transactional.id is active
-     * @throws org.apache.kafka.common.errors.InvalidProducerEpochException if the producer has attempted to produce with an old epoch
-     *         to the partition leader. See the exception for more details
-     * @throws org.apache.kafka.common.errors.UnsupportedVersionException fatal error indicating the broker
-     *         does not support transactions (i.e. if its version is lower than 0.11.0.0)
-     * @throws org.apache.kafka.common.errors.AuthorizationException fatal error indicating that the configured
-     *         transactional.id is not authorized. See the exception for more details
-     * @throws KafkaException if the producer has encountered a previous fatal error or for any other unexpected error
-     * @throws TimeoutException if the time taken for aborting the transaction has surpassed <code>max.block.ms</code>.
-     * @throws InterruptException if the thread is interrupted while blocked
      */
     public void abortTransaction() throws ProducerFencedException {
         throwIfNoTransactionManager();
@@ -874,13 +781,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
 
     /**
      * 等待包含给定主题分区的集群元数据可用。
-     * @param topic The topic we want metadata for
-     * @param partition A specific partition expected to exist in metadata, or null if there's no preference
-     * @param nowMs The current time in ms
-     * @param maxWaitMs The maximum time in ms for waiting on the metadata
      * @return T包含主题元数据的集群和我们等待的时间，单位为毫秒
-     * @throws TimeoutException if metadata could not be refreshed within {@code max.block.ms}
-     * @throws KafkaException for all Kafka-related exceptions, including the case where this method is called after producer close
      */
     private ClusterAndWaitTime waitOnMetadata(String topic, Integer partition, long nowMs, long maxWaitMs) throws InterruptedException {
         // 将主题添加到元数据主题列表中，如果该主题不存在并重置过期
@@ -950,19 +851,15 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
     }
 
     /**
-     * Invoking this method makes all buffered records immediately available to send (even if <code>linger.ms</code> is
-     * greater than 0) and blocks on the completion of the requests associated with these records. The post-condition
-     * of <code>flush()</code> is that any previously sent record will have completed (e.g. <code>Future.isDone() == true</code>).
-     * A request is considered completed when it is successfully acknowledged
-     * according to the <code>acks</code> configuration you have specified or else it results in an error.
+     * 调用此方法使所有缓冲记录可以立即发送(即使 <code>linger.ms</code> 大于0)，并阻止完成与这些记录关联的请求。的后置条件
+     * <code>flush()</code> 以前发送的记录是否已经完成 (e.g. <code>Future.isDone() == true</code>).
+     * 方法成功确认请求时，认为请求已完成 <code>acks</code> 配置，否则会导致错误。
      * <p>
-     * Other threads can continue sending records while one thread is blocked waiting for a flush call to complete,
-     * however no guarantee is made about the completion of records sent after the flush call begins.
+     * 当一个线程被阻塞等待刷新调用完成时，其他线程可以继续发送记录，但是不能保证在刷新调用开始后发送的记录是否完成。
      * <p>
-     * This method can be useful when consuming from some input system and producing into Kafka. The <code>flush()</code> call
-     * gives a convenient way to ensure all previously sent messages have actually completed.
+     * 当从某些输入系统消费并生成到Kafka时，这种方法非常有用。<code>flush()<code>调用提供了一种方便的方法来确保所有先前发送的消息实际上已经完成。
      * <p>
-     * This example shows how to consume from one Kafka topic and produce to another Kafka topic:
+     * 这个例子展示了如何从一个Kafka主题消费和生产到另一个Kafka主题:
      * <pre>
      * {@code
      * for(ConsumerRecord<String, String> record: consumer.poll(100))
@@ -972,13 +869,12 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
      * }
      * </pre>
      *
-     * Note that the above example may drop records if the produce request fails. If we want to ensure that this does not occur
-     * we need to set <code>retries=&lt;large_number&gt;</code> in our config.
+     * 注意，如果生成请求失败，上面的示例可能会删除记录。如果我们想确保这种情况不会发生，我们需要设置 <code>retries=&lt;large_number&gt;</code> 在我们的配置。
      * </p>
      * <p>
-     * Applications don't need to call this method for transactional producers, since the {@link #commitTransaction()} will
-     * flush all buffered records before performing the commit. This ensures that all the {@link #send(ProducerRecord)}
-     * calls made since the previous {@link #beginTransaction()} are completed before the commit.
+     * 应用程序不需要为事务性生产者调用此方法，因为 {@link #commitTransaction()} 应用程序不需要为事务性生产者调用此方法，因为
+     * {@link #send(ProducerRecord)}
+     * 从上一个开始回调 {@link #beginTransaction()} 在提交之前完成。
      * </p>
      *
      * @throws InterruptException If the thread is interrupted while blocked
@@ -996,12 +892,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
     }
 
     /**
-     * Get the partition metadata for the given topic. This can be used for custom partitioning.
-     * @throws AuthenticationException if authentication fails. See the exception for more details
-     * @throws AuthorizationException if not authorized to the specified topic. See the exception for more details
-     * @throws InterruptException if the thread is interrupted while blocked
-     * @throws TimeoutException if metadata could not be refreshed within {@code max.block.ms}
-     * @throws KafkaException for all Kafka-related exceptions, including the case where this method is called after producer close
+     * 获取给定主题的分区元数据。这可以用于自定义分区。
      */
     @Override
     public List<PartitionInfo> partitionsFor(String topic) {
@@ -1228,5 +1119,10 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             if (this.userCallback != null)
                 this.userCallback.onCompletion(metadata, exception);
         }
+    }
+
+    public static void main(String[] args) {
+        Map<String,String> map = new HashMap<>();
+        System.out.println(map.put("a","a") == null);
     }
 }

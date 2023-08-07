@@ -148,7 +148,7 @@ public final class ProducerBatch {
     /**
      * 中止批处理并完成future和回调。
      *
-     * @param exception The exception to use to complete the future and awaiting callbacks.
+     * @param exception 用于完成未来和等待回调的异常。
      */
     public void abort(RuntimeException exception) {
         if (!finalState.compareAndSet(null, FinalState.ABORTED))
@@ -160,7 +160,7 @@ public final class ProducerBatch {
 
     /**
      * 检查批处理是否已完成(成功或异常)。
-     * @return `true` if the batch has been completed, `false` otherwise.
+     * @return 如果批处理已完成，则为true，否则为false。
      */
     public boolean isDone() {
         return finalState() != null;

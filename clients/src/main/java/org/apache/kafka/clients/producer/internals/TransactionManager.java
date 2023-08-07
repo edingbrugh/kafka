@@ -89,7 +89,7 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
- * A class which maintains state for transactions. Also keeps the state necessary to ensure idempotent production.
+ * 维护事务状态的类。也保持必要的状态，以确保幂等生产。
  */
 public class TransactionManager {
     private static final int NO_INFLIGHT_REQUEST_CORRELATION_ID = -1;
@@ -337,7 +337,7 @@ public class TransactionManager {
     synchronized TransactionalRequestResult initializeTransactions(ProducerIdAndEpoch producerIdAndEpoch) {
         boolean isEpochBump = producerIdAndEpoch != ProducerIdAndEpoch.NONE;
         return handleCachedTransactionRequestResult(() -> {
-            // If this is an epoch bump, we will transition the state as part of handling the EndTxnRequest
+            // 如果这是一个epoch bump，我们将转换状态作为处理EndTxnRequest的一部分
             if (!isEpochBump) {
                 transitionTo(State.INITIALIZING);
                 log.info("Invoking InitProducerId for the first time in order to acquire a producer ID");
@@ -376,7 +376,7 @@ public class TransactionManager {
                 maybeFailWithError();
             transitionTo(State.ABORTING_TRANSACTION);
 
-            // We're aborting the transaction, so there should be no need to add new partitions
+            // 我们正在中止事务，因此不需要添加新的分区
             newPartitionsInTransaction.clear();
             return beginCompletingTransaction(TransactionResult.ABORT);
         }, State.ABORTING_TRANSACTION);
@@ -386,9 +386,8 @@ public class TransactionManager {
         if (!newPartitionsInTransaction.isEmpty())
             enqueueRequest(addPartitionsToTransactionHandler());
 
-        // If the error is an INVALID_PRODUCER_ID_MAPPING error, the server will not accept an EndTxnRequest, so skip
-        // directly to InitProducerId. Otherwise, we must first abort the transaction, because the producer will be
-        // fenced if we directly call InitProducerId.
+        // 如果错误是INVALID_PRODUCER_ID_MAPPING错误，服务器将不接受EndTxnRequest，因此直接跳到InitProducerId。否则，我们必须首先中止事务，
+        // 因为如果我们直接调用InitProducerId，生产者将被隔离。
         if (!(lastError instanceof InvalidPidMappingException)) {
             EndTxnRequest.Builder builder = new EndTxnRequest.Builder(
                     new EndTxnRequestData()
@@ -522,8 +521,7 @@ public class TransactionManager {
     }
 
     /**
-     * Get the current producer id and epoch without blocking. Callers must use {@link ProducerIdAndEpoch#isValid()} to
-     * verify that the result is valid.
+     * 在不阻塞的情况下获取当前生产者id和epoch。调用者必须使用{@link ProducerIdAndEpoch#isValid()}来验证结果是否有效。
      *
      * @return the current ProducerIdAndEpoch.
      */
@@ -533,8 +531,7 @@ public class TransactionManager {
 
     synchronized public void maybeUpdateProducerIdAndEpoch(TopicPartition topicPartition) {
         if (hasStaleProducerIdAndEpoch(topicPartition) && !hasInflightBatches(topicPartition)) {
-            // If the batch was on a different ID and/or epoch (due to an epoch bump) and all its in-flight batches
-            // have completed, reset the partition sequence so that the next batch (with the new epoch) starts from 0
+            // 如果批处理在不同的ID或epoch上(由于epoch碰撞)，并且所有正在运行的批处理都已完成，则重置分区序列，以便下一个批处理(具有新epoch)从0开始
             topicPartitionBookkeeper.startSequencesAtBeginning(topicPartition, this.producerIdAndEpoch);
             log.debug("ProducerId of partition {} set to {} with epoch {}. Reinitialize sequence at beginning.",
                       topicPartition, producerIdAndEpoch.producerId, producerIdAndEpoch.epoch);
@@ -542,7 +539,7 @@ public class TransactionManager {
     }
 
     /**
-     * Set the producer id and epoch atomically.
+     * 自动设置生产者id和epoch。
      */
     private void setProducerIdAndEpoch(ProducerIdAndEpoch producerIdAndEpoch) {
         log.info("ProducerId set to {} with epoch {}", producerIdAndEpoch.producerId, producerIdAndEpoch.epoch);
@@ -550,9 +547,8 @@ public class TransactionManager {
     }
 
     /**
-     * This method resets the producer ID and epoch and sets the state to UNINITIALIZED, which will trigger a new
-     * InitProducerId request. This method is only called when the producer epoch is exhausted; we will bump the epoch
-     * instead.
+     * 这个方法重置生产者ID和epoch，并将状态设置为UNINITIALIZED，这将触发一个新的InitProducerId请求。
+     * 此方法仅在生产者epoch耗尽时调用;我们将碰撞epoch。
      */
     private void resetIdempotentProducerId() {
         if (isTransactional())
@@ -586,7 +582,7 @@ public class TransactionManager {
             log.debug("Incremented producer epoch, current producer ID and epoch are now {}", this.producerIdAndEpoch);
         }
 
-        // When the epoch is bumped, rewrite all in-flight sequences for the partition(s) that triggered the epoch bump
+        // 当epoch发生碰撞时，重写触发epoch碰撞的分区的所有动态序列
         for (TopicPartition topicPartition : this.partitionsToRewriteSequences) {
             this.topicPartitionBookkeeper.startSequencesAtBeginning(topicPartition, this.producerIdAndEpoch);
             this.partitionsWithUnresolvedSequences.remove(topicPartition);
@@ -613,14 +609,14 @@ public class TransactionManager {
     }
 
     /**
-     * Returns the next sequence number to be written to the given TopicPartition.
+     * 返回下一个要写入给定TopicPartition的序列号。
      */
     synchronized Integer sequenceNumber(TopicPartition topicPartition) {
         return topicPartitionBookkeeper.getOrCreatePartition(topicPartition).nextSequence;
     }
 
     /**
-     * Returns the current producer id/epoch of the given TopicPartition.
+     * 返回给定TopicPartition的当前生产者id/epoch。
      */
     synchronized ProducerIdAndEpoch producerIdAndEpoch(TopicPartition topicPartition) {
         return topicPartitionBookkeeper.getOrCreatePartition(topicPartition).producerIdAndEpoch;
@@ -640,11 +636,8 @@ public class TransactionManager {
     }
 
     /**
-     * Returns the first inflight sequence for a given partition. This is the base sequence of an inflight batch with
-     * the lowest sequence number.
-     * @return the lowest inflight sequence if the transaction manager is tracking inflight requests for this partition.
-     *         If there are no inflight requests being tracked for this partition, this method will return
-     *         RecordBatch.NO_SEQUENCE.
+     * 返回给定分区的第一个飞行序列。这是具有最低序号的飞行批次的基本序列
+     * @return 如果事务管理器正在跟踪此分区的迁移请求，则为最低迁移序列。如果这个分区没有被跟踪的请求，这个方法将返回RecordBatch.NO_SEQUENCE。
      */
     synchronized int firstInFlightSequence(TopicPartition topicPartition) {
         if (!hasInflightBatches(topicPartition))
@@ -691,9 +684,8 @@ public class TransactionManager {
             return;
         long lastOffset = response.baseOffset + batch.recordCount - 1;
         OptionalLong lastAckedOffset = lastAckedOffset(batch.topicPartition);
-        // It might happen that the TransactionManager has been reset while a request was reenqueued and got a valid
-        // response for this. This can happen only if the producer is only idempotent (not transactional) and in
-        // this case there will be no tracked bookkeeper entry about it, so we have to insert one.
+        // 当请求重新排队并为此获得有效响应时，TransactionManager可能会被重置。只有当生产者是幂等的(不是事务性的)时才会发生这种情况，
+        // 在这种情况下，不会有关于它的跟踪账簿条目，所以我们必须插入一个。
         if (!lastAckedOffset.isPresent() && !isTransactional()) {
             topicPartitionBookkeeper.addPartition(batch.topicPartition);
         }
@@ -744,15 +736,12 @@ public class TransactionManager {
             log.error("The broker returned {} for topic-partition {} with producerId {}, epoch {}, and sequence number {}",
                     exception, batch.topicPartition, batch.producerId(), batch.producerEpoch(), batch.baseSequence());
 
-            // If we fail with an OutOfOrderSequenceException, we have a gap in the log. Bump the epoch for this
-            // partition, which will reset the sequence number to 0 and allow us to continue
+            // 如果我们使用OutOfOrderSequenceException失败，我们在日志中有一个空白。碰撞这个分区的epoch，这将把序列号重置为0，并允许我们继续
             requestEpochBumpForPartition(batch.topicPartition);
         } else if (exception instanceof UnknownProducerIdException) {
-            // If we get an UnknownProducerId for a partition, then the broker has no state for that producer. It will
-            // therefore accept a write with sequence number 0. We reset the sequence number for the partition here so
-            // that the producer can continue after aborting the transaction. All inflight-requests to this partition
-            // will also fail with an UnknownProducerId error, so the sequence will remain at 0. Note that if the
-            // broker supports bumping the epoch, we will later reset all sequence numbers after calling InitProducerId
+            // 如果我们获得分区的UnknownProducerId，则代理没有该生产者的状态。因此，它将接受序列号为0的写操作。我们在这里重置分区的序列号，
+            // 以便生产者在终止事务后可以继续。对该分区的所有飞行请求也将失败，并出现UnknownProducerId错误，因此序列将保持为0。
+            // 请注意，如果代理支持碰撞epoch，我们稍后将在调用InitProducerId后重置所有序列号
             resetSequenceForPartition(batch.topicPartition);
         } else {
             if (adjustSequenceNumbers) {
@@ -765,15 +754,11 @@ public class TransactionManager {
         }
     }
 
-    // If a batch is failed fatally, the sequence numbers for future batches bound for the partition must be adjusted
-    // so that they don't fail with the OutOfOrderSequenceException.
-    //
-    // This method must only be called when we know that the batch is question has been unequivocally failed by the broker,
-    // ie. it has received a confirmed fatal status code like 'Message Too Large' or something similar.
+    // 如果批处理失败，则必须调整绑定到该分区的未来批处理的序列号，以便它们不会使用OutOfOrderSequenceException失败。
+    // 这个方法必须只在我们知道被质疑的批处理已经被代理明确地失败时才调用。它已经收到一个确认的致命状态码，如“消息太大”或类似的东西。
     private void adjustSequencesDueToFailedBatch(ProducerBatch batch) {
         if (!topicPartitionBookkeeper.contains(batch.topicPartition))
-            // Sequence numbers are not being tracked for this partition. This could happen if the producer id was just
-            // reset due to a previous OutOfOrderSequenceException.
+            // 没有跟踪此分区的序列号。如果生产者id由于之前的OutOfOrderSequenceException而刚刚重置，则可能发生这种情况。
             return;
         log.debug("producerId: {}, send to partition {} failed fatally. Reducing future sequence numbers by {}",
                 batch.producerId(), batch.topicPartition, batch.recordCount);
@@ -822,22 +807,20 @@ public class TransactionManager {
                 partitionsWithUnresolvedSequences.get(batch.topicPartition));
     }
 
-    // Attempts to resolve unresolved sequences. If all in-flight requests are complete and some partitions are still
-    // unresolved, either bump the epoch if possible, or transition to a fatal error
+    // 尝试解析未解析的序列。如果所有正在运行的请求都完成了，并且有些分区仍然无法解析，那么如果可能的话，要么碰撞epoch，要么转换为致命错误
     synchronized void maybeResolveSequences() {
         for (Iterator<TopicPartition> iter = partitionsWithUnresolvedSequences.keySet().iterator(); iter.hasNext(); ) {
             TopicPartition topicPartition = iter.next();
             if (!hasInflightBatches(topicPartition)) {
-                // The partition has been fully drained. At this point, the last ack'd sequence should be one less than
-                // next sequence destined for the partition. If so, the partition is fully resolved. If not, we should
-                // reset the sequence number if necessary.
+                // 分区已完全清空。此时，最后一个返回的序列应该比下一个用于分区的序列少一个。如果是，则分区已完全解析。
+                // 如果没有，我们应该在必要时重置序列号。
                 if (isNextSequence(topicPartition, sequenceNumber(topicPartition))) {
-                    // This would happen when a batch was expired, but subsequent batches succeeded.
+                    // 当一个批次过期，但后续批次成功时，就会发生这种情况。
                     iter.remove();
                 } else {
-                    // We would enter this branch if all in flight batches were ultimately expired in the producer.
+                    // 如果所有在航批次最终在生产者中过期，我们将进入该分支。
                     if (isTransactional()) {
-                        // For the transactional producer, we bump the epoch if possible, otherwise we transition to a fatal error
+                        // 对于事务性生产者，如果可能的话，我们会撞击epoch，否则我们会转换到致命错误
                         String unackedMessagesErr = "The client hasn't received acknowledgment for some previously " +
                                 "sent messages and can no longer retry them. ";
                         if (canBumpEpoch()) {
@@ -990,35 +973,26 @@ public class TransactionManager {
     synchronized boolean canRetry(ProduceResponse.PartitionResponse response, ProducerBatch batch) {
         Errors error = response.error;
 
-        // An UNKNOWN_PRODUCER_ID means that we have lost the producer state on the broker. Depending on the log start
-        // offset, we may want to retry these, as described for each case below. If none of those apply, then for the
-        // idempotent producer, we will locally bump the epoch and reset the sequence numbers of in-flight batches from
-        // sequence 0, then retry the failed batch, which should now succeed. For the transactional producer, allow the
-        // batch to fail. When processing the failed batch, we will transition to an abortable error and set a flag
-        // indicating that we need to bump the epoch (if supported by the broker).
+        // UNKNOWN_PRODUCER_ID意味着我们已经丢失了代理上的生产者状态。根据日志开始偏移量的不同，我们可能需要重试这些操作，
+        // 如下面的每种情况所述。如果这些都不适用，那么对于幂等生产者，我们将在本地碰撞epoch并从序列0重置飞行中批次的序列号，
+        // 然后重试失败的批次，现在应该成功了。对于事务性生产者，允许批处理失败。在处理失败的批处理时，我们将转换到一个可中止的错误，
+        // 并设置一个标志，表明我们需要撞击epoch(如果代理支持)。
         if (error == Errors.UNKNOWN_PRODUCER_ID) {
             if (response.logStartOffset == -1) {
-                // We don't know the log start offset with this response. We should just retry the request until we get it.
-                // The UNKNOWN_PRODUCER_ID error code was added along with the new ProduceResponse which includes the
-                // logStartOffset. So the '-1' sentinel is not for backward compatibility. Instead, it is possible for
-                // a broker to not know the logStartOffset at when it is returning the response because the partition
-                // may have moved away from the broker from the time the error was initially raised to the time the
-                // response was being constructed. In these cases, we should just retry the request: we are guaranteed
-                // to eventually get a logStartOffset once things settle down.
+                // 我们不知道这个响应的log开始偏移量。我们应该重试请求，直到我们得到它。UNKNOWN_PRODUCER_ID错误代码与
+                // 新的producerResponse一起添加，其中包括logStartOffset。所以'-1'哨兵不是为了向后兼容。相反，
+                // 代理可能在返回响应时不知道logStartOffset，因为从最初引发错误到构造响应时，分区可能已经离开了代理。
+                // 在这些情况下，我们应该只是重试请求:一旦事情解决，我们保证最终获得logStartOffset。
                 return true;
             }
 
             if (batch.sequenceHasBeenReset()) {
-                // When the first inflight batch fails due to the truncation case, then the sequences of all the other
-                // in flight batches would have been restarted from the beginning. However, when those responses
-                // come back from the broker, they would also come with an UNKNOWN_PRODUCER_ID error. In this case, we should not
-                // reset the sequence numbers to the beginning.
+                // 当第一个飞行批次由于截断情况而失败时，所有其他飞行批次的序列将从头开始重新启动。然而，当这些响应从代理返回时，
+                // 它们也会带来一个UNKNOWN_PRODUCER_ID错误。在这种情况下，我们不应该将序列号重置到开头。
                 return true;
             } else if (lastAckedOffset(batch.topicPartition).orElse(NO_LAST_ACKED_SEQUENCE_NUMBER) < response.logStartOffset) {
-                // The head of the log has been removed, probably due to the retention time elapsing. In this case,
-                // we expect to lose the producer state. For the transactional producer, reset the sequences of all
-                // inflight batches to be from the beginning and retry them, so that the transaction does not need to
-                // be aborted. For the idempotent producer, bump the epoch to avoid reusing (sequence, epoch) pairs
+                // 日志的头部已被删除，可能是由于保留时间的流逝。在这种情况下，我们期望失去生产者状态。对于事务生成器，
+                // 将所有飞行批的序列重新设置为从头开始并重试它们，以便不需要中止事务。对于幂等产生器，碰撞epoch以避免重用(sequence, epoch)对
                 if (isTransactional()) {
                     topicPartitionBookkeeper.startSequencesAtBeginning(batch.topicPartition, this.producerIdAndEpoch);
                 } else {
@@ -1028,22 +1002,18 @@ public class TransactionManager {
             }
 
             if (!isTransactional()) {
-                // For the idempotent producer, always retry UNKNOWN_PRODUCER_ID errors. If the batch has the current
-                // producer ID and epoch, request a bump of the epoch. Otherwise just retry the produce.
+                // 对于幂等生产者，总是重试UNKNOWN_PRODUCER_ID错误。如果批处理具有当前的生产者ID和epoch，则请求epoch的bump。否则，请重试该产品。
                 requestEpochBumpForPartition(batch.topicPartition);
                 return true;
             }
         } else if (error == Errors.OUT_OF_ORDER_SEQUENCE_NUMBER) {
             if (!hasUnresolvedSequence(batch.topicPartition) &&
                     (batch.sequenceHasBeenReset() || !isNextSequence(batch.topicPartition, batch.baseSequence()))) {
-                // We should retry the OutOfOrderSequenceException if the batch is _not_ the next batch, ie. its base
-                // sequence isn't the lastAckedSequence + 1.
+                // 如果批处理不是下一个批处理，我们应该重试OutOfOrderSequenceException。它的基序列不是lastAckedSequence + 1。
                 return true;
             } else if (!isTransactional()) {
-                // For the idempotent producer, retry all OUT_OF_ORDER_SEQUENCE_NUMBER errors. If there are no
-                // unresolved sequences, or this batch is the one immediately following an unresolved sequence, we know
-                // there is actually a gap in the sequences, and we bump the epoch. Otherwise, retry without bumping
-                // and wait to see if the sequence resolves
+                // 对于幂等生产者，重试所有OUT_OF_ORDER_SEQUENCE_NUMBER错误。如果没有未解决的序列，或者这批序列紧跟着一个未解决的序列，
+                // 我们知道序列中实际上有一个间隙，我们碰撞历元。否则，重试而不碰撞，并等待查看序列是否解析
                 if (!hasUnresolvedSequence(batch.topicPartition) ||
                         isNextSequenceForUnresolvedPartition(batch.topicPartition, batch.baseSequence())) {
                     requestEpochBumpForPartition(batch.topicPartition);
@@ -1052,7 +1022,7 @@ public class TransactionManager {
             }
         }
 
-        // If neither of the above cases are true, retry if the exception is retriable
+        // 如果上述两种情况都不成立，如果异常是可检索的，则重试
         return error.exception() instanceof RetriableException;
     }
 
@@ -1106,8 +1076,7 @@ public class TransactionManager {
 
     private void maybeFailWithError() {
         if (hasError()) {
-            // for ProducerFencedException, do not wrap it as a KafkaException
-            // but create a new instance without the call trace since it was not thrown because of the current call
+            // 对于ProducerFencedException，不要将其包装为KafkaException，而是创建一个没有调用跟踪的新实例，因为它不是由于当前调用而抛出的
             if (lastError instanceof ProducerFencedException) {
                 throw new ProducerFencedException("The producer has been rejected from the broker because " +
                     "it tried to use an old epoch with the transactionalId");
@@ -1465,11 +1434,9 @@ public class TransactionManager {
 
             Set<TopicPartition> partitions = errors.keySet();
 
-            // Remove the partitions from the pending set regardless of the result. We use the presence
-            // of partitions in the pending set to know when it is not safe to send batches. However, if
-            // the partitions failed to be added and we enter an error state, we expect the batches to be
-            // aborted anyway. In this case, we must be able to continue sending the batches which are in
-            // retry for partitions that were successfully added.
+            // 无论结果如何，都要从挂起集中删除分区。我们使用挂起集中存在的分区来知道何时发送批处理是不安全的。
+            // 但是，如果分区添加失败并且我们进入错误状态，我们希望批处理无论如何都会被终止。在这种情况下，
+            // 我们必须能够继续为已成功添加的分区发送正在重试的批。
             pendingPartitionsInTransaction.removeAll(partitions);
 
             if (!unauthorizedTopics.isEmpty()) {
@@ -1490,11 +1457,8 @@ public class TransactionManager {
         }
 
         private void maybeOverrideRetryBackoffMs() {
-            // We only want to reduce the backoff when retrying the first AddPartition which errored out due to a
-            // CONCURRENT_TRANSACTIONS error since this means that the previous transaction is still completing and
-            // we don't want to wait too long before trying to start the new one.
-            //
-            // This is only a temporary fix, the long term solution is being tracked in
+            // 我们只希望在重试第一个AddPartition(由于CONCURRENT_TRANSACTIONS错误而出错)时减少回退，因为这意味着前一个事务仍在完成，
+            // 我们不想在尝试启动新事务之前等待太长时间。这只是一个临时的解决方案，长期的解决方案正在进行中
             // https://issues.apache.org/jira/browse/KAFKA-5482
             if (partitionsInTransaction.isEmpty())
                 this.retryBackoffMs = ADD_PARTITIONS_RETRY_BACKOFF_MS;
@@ -1539,7 +1503,7 @@ public class TransactionManager {
                 fatalError(new IllegalStateException("Group coordinator lookup failed: Invalid response containing more than a single coordinator"));
             }
             Coordinator coordinatorData = coordinators.get(0);
-            // For older versions without batching, obtain key from request data since it is not included in response
+            // 对于没有批处理的旧版本，请从请求数据中获取键，因为它不包含在响应中
             String key = coordinatorData.key() == null ? builder.data().key() : coordinatorData.key();
             Errors error = Errors.forCode(coordinatorData.errorCode());
             if (error == Errors.NONE) {
@@ -1605,8 +1569,7 @@ public class TransactionManager {
             } else if (error == Errors.COORDINATOR_LOAD_IN_PROGRESS || error == Errors.CONCURRENT_TRANSACTIONS) {
                 reenqueue();
             } else if (error == Errors.INVALID_PRODUCER_EPOCH || error == Errors.PRODUCER_FENCED) {
-                // We could still receive INVALID_PRODUCER_EPOCH from old versioned transaction coordinator,
-                // just treat it the same as PRODUCE_FENCED.
+                // 我们仍然可以从旧版本的事务协调器接收INVALID_PRODUCER_EPOCH，只需将其视为与PRODUCE_FENCED相同。
                 fatalError(Errors.PRODUCER_FENCED.exception());
             } else if (error == Errors.TRANSACTIONAL_ID_AUTHORIZATION_FAILED) {
                 fatalError(error.exception());
@@ -1664,8 +1627,7 @@ public class TransactionManager {
             } else if (error == Errors.UNKNOWN_PRODUCER_ID || error == Errors.INVALID_PRODUCER_ID_MAPPING) {
                 abortableErrorIfPossible(error.exception());
             } else if (error == Errors.INVALID_PRODUCER_EPOCH || error == Errors.PRODUCER_FENCED) {
-                // We could still receive INVALID_PRODUCER_EPOCH from old versioned transaction coordinator,
-                // just treat it the same as PRODUCE_FENCED.
+                // 我们仍然可以从旧版本的事务协调器接收INVALID_PRODUCER_EPOCH，只需将其视为与PRODUCE_FENCED相同。
                 fatalError(Errors.PRODUCER_FENCED.exception());
             } else if (error == Errors.TRANSACTIONAL_ID_AUTHORIZATION_FAILED) {
                 fatalError(error.exception());
@@ -1729,7 +1691,7 @@ public class TransactionManager {
                     }
                 } else if (error == Errors.UNKNOWN_TOPIC_OR_PARTITION
                         || error == Errors.COORDINATOR_LOAD_IN_PROGRESS) {
-                    // If the topic is unknown or the coordinator is loading, retry with the current coordinator
+                    // 如果主题未知或正在加载协调器，请使用当前协调器重试
                     continue;
                 } else if (error == Errors.GROUP_AUTHORIZATION_FAILED) {
                     abortableError(GroupAuthorizationException.forGroupId(builder.data.groupId()));
@@ -1756,7 +1718,7 @@ public class TransactionManager {
             } else if (pendingTxnOffsetCommits.isEmpty()) {
                 result.done();
             } else {
-                // Retry the commits which failed with a retriable error
+                // 重试提交失败的可检索错误
                 reenqueue();
             }
         }
