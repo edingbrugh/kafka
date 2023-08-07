@@ -15,7 +15,7 @@ import java.util.Random;
  */
 public class KafKaProducerTest {
 
-    private static final String  brokerList = "localhost:9092";
+    private static final String  brokerList = "10.51.134.132:9092";
 
     private static final String TOP_TEST = "test872800";
 
@@ -24,12 +24,13 @@ public class KafKaProducerTest {
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, brokerList);
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        props.put(ProducerConfig.BATCH_SIZE_CONFIG, 5);
 
         //2.创建生产者
         KafkaProducer<String, String> producer = new KafkaProducer<String, String>(props);
 
         //3.封装消息队列
-        for (Integer i = 0; i < 10000000; i++) {
+        for (Integer i = 0; i < 10; i++) {
             String key = "key" + i;
             String value = "value" + new Random().nextInt(3456789);
             ProducerRecord<String, String> record = new ProducerRecord<>(TOP_TEST, key, value);

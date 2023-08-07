@@ -111,13 +111,13 @@ public class ProducerMetadata extends Metadata {
     }
 
     /**
-     * Wait for metadata update until the current version is larger than the last version we know of
+     * 等待元数据更新，直到当前版本大于我们所知道的最后一个版本
      */
     public synchronized void awaitUpdate(final int lastVersion, final long timeoutMs) throws InterruptedException {
         long currentTimeMs = time.milliseconds();
         long deadlineMs = currentTimeMs + timeoutMs < 0 ? Long.MAX_VALUE : currentTimeMs + timeoutMs;
         time.waitObject(this, () -> {
-            // Throw fatal exceptions, if there are any. Recoverable topic errors will be handled by the caller.
+            // 抛出致命异常(如果有的话)。可恢复的主题错误将由调用方处理。
             maybeThrowFatalException();
             return updateVersion() > lastVersion || isClosed();
         }, deadlineMs);
@@ -130,8 +130,7 @@ public class ProducerMetadata extends Metadata {
     public synchronized void update(int requestVersion, MetadataResponse response, boolean isPartialUpdate, long nowMs) {
         super.update(requestVersion, response, isPartialUpdate, nowMs);
 
-        // Remove all topics in the response that are in the new topic set. Note that if an error was encountered for a
-        // new topic's metadata, then any work to resolve the error will include the topic in a full metadata update.
+        // 删除响应中新主题集中的所有主题。请注意，如果新主题的元数据遇到错误，那么解决错误的任何工作都将在完整的元数据更新中包含该主题。
         if (!newTopics.isEmpty()) {
             for (MetadataResponse.TopicMetadata metadata : response.topicMetadata()) {
                 newTopics.remove(metadata.topic());
