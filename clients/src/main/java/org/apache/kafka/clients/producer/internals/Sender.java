@@ -733,7 +733,7 @@ public class Sender implements Runnable {
     }
 
     /**
-     * 以每个节点为基础，将记录批次转移到产品请求列表中
+     * 以每个节点为基础，将记录批次转移到生产者请求列表中
      */
     private void sendProduceRequests(Map<Integer, List<ProducerBatch>> collated, long now) {
         for (Map.Entry<Integer, List<ProducerBatch>> entry : collated.entrySet())

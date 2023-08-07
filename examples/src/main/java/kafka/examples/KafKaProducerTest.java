@@ -24,7 +24,10 @@ public class KafKaProducerTest {
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, brokerList);
         props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
         props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+
+        //2.创建生产者
         KafkaProducer<String, String> producer = new KafkaProducer<String, String>(props);
+
         //3.封装消息队列
         for (Integer i = 0; i < 10000000; i++) {
             String key = "key" + i;
